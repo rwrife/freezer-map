@@ -1,0 +1,55 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+build/
+coverage/
+*.lock
+
+# Keep the application dependency lockfile once the Flutter project exists
+!pubspec.lock
+
+# Android generated/local state
+android/.gradle/
+android/local.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+*.jks
+*.keystore
+key.properties
+
+# iOS generated/local state
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+*.mobileprovision
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Test and packaging artifacts
+test-results/
+integration_test/screenshots/
+dist/
+*.apk
+*.aab
+*.ipa
+
+# Local databases and sidecars
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
