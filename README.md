@@ -2,7 +2,7 @@
 
 A local-first mobile app for households to map freezer contents by appliance and bin, track portions and frozen dates, surface use-first items, and export inventory without accounts.
 
-> **Status:** documentation and backlog scaffold only. No Flutter application, database, build, test result, screenshot, package, or store release exists yet.
+> **Status:** Flutter foundation in active development. The app currently starts on an honest empty-state screen; inventory, persistence, backup, reminders, release signing, and store distribution are not implemented yet.
 
 ## Why
 
@@ -67,19 +67,41 @@ Dates are user-entered planning metadata, not food-safety determinations. The UI
 
 All primary flows must work with TalkBack and VoiceOver. Controls require semantic names and hints, logical focus order, at least 44×44 pt targets, and no color-only status. Layouts must remain usable at 200% text scale. Quantity changes require clear spoken feedback and an undo action. Motion is decorative and disabled when reduced motion is requested.
 
-## Development quickstart (planned)
+## Development quickstart
 
-Prerequisites: Flutter stable, Dart bundled with Flutter, Android Studio/SDK for Android, and Xcode/CocoaPods on macOS for iOS.
+The project is pinned to **Flutter 3.47.2 / Dart 3.13.2**. Install that exact
+Flutter stable release, then run:
 
 ```bash
-flutter doctor
-flutter pub get
-flutter analyze
-flutter test
-flutter run
+flutter --version
+flutter pub get --enforce-lockfile
+git diff --exit-code
+dart format --output=none --set-exit-if-changed .
+dart run tool/check_architecture.dart
+flutter analyze --fatal-infos --fatal-warnings
+flutter test --coverage
+flutter build apk --debug
 ```
 
-These commands describe the intended project workflow; they cannot run until issue #1 creates the Flutter project.
+The Dart quality gates above were executed on Linux ARM64 using the official
+matching Dart SDK graft described in [the dependency record](docs/dependencies.md).
+This host has no Android SDK, so the Android debug build is verified in Linux
+CI. The unsigned iOS simulator-target compile runs in macOS CI; it is not a
+simulator launch, signed archive, App Store build, or physical-device test.
+
+The scaffold identifiers are deliberately non-production placeholders:
+
+- Android namespace/application ID: `com.example.freezer_map`
+- iOS bundle ID: `com.example.freezerMap`
+
+Replace both with an owned reverse-DNS identifier before signing or release.
+No signing material belongs in this repository.
+
+See [architecture boundaries](docs/architecture.md) and the
+[toolchain/dependency license record](docs/dependencies.md) before adding a
+package. The current application has no runtime third-party plugin, analytics,
+advertising, account, networking, database, broad file-access, or permission
+integration.
 
 ## Milestones
 
