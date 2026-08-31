@@ -25,13 +25,24 @@ device evidence; those remain separate CI/platform gates.
 | `flutter` | SDK from Flutter 3.47.2 | Material application framework | BSD 3-Clause |
 | `flutter_test` | Flutter SDK | Unit and widget test harness | BSD 3-Clause |
 | `flutter_lints` | 6.0.0 | Maintained baseline lint rules | BSD 3-Clause |
+| `decimal` | 3.2.6 | Exact, non-binary portion quantities | Apache-2.0 |
+| `drift` | 2.34.3 | Typed SQLite schema, queries, and transactions | MIT |
+| `path` | 1.9.1 | Portable app-private database path joining | BSD 3-Clause |
+| `path_provider` | 2.1.6 | OS application-support directory lookup | BSD 3-Clause |
+| `unorm_dart` | 0.3.2 | Unicode normalization for deterministic local search | MIT |
+| `build_runner` | 2.16.0 (development only) | Deterministic code-generation runner | BSD 3-Clause |
+| `drift_dev` | 2.34.5 (development only) | Drift schema/code generator | MIT |
 
-No runtime third-party package, analytics, advertising, account, networking,
-database, filesystem, notification, or permissions plugin is included in this
-foundation. Later package additions must record purpose, version, license,
-privacy/permission impact, and lockfile changes here.
+Drift and its locked transitive `sqlite3` dependency provide the local database;
+`path_provider` selects the operating system's app-private support directory.
+These packages add no account, analytics, advertising, telemetry, notification,
+broad filesystem permission, or application network behavior. The native
+SQLite library is resolved through Dart native assets; the obsolete
+`sqlite3_flutter_libs` package is intentionally not used. Later package
+additions must record purpose, version, license, privacy/permission impact, and
+lockfile changes here.
 
-Flutter and `flutter_lints` license texts were checked from the resolved SDK and
-pub cache. Transitive test/tool packages are locked in `pubspec.lock`; Flutter's
+Direct package license texts were checked from the resolved SDK and pub cache.
+Transitive runtime/test/tool packages are locked in `pubspec.lock`; Flutter's
 build-generated application license bundle remains the distribution source of
 third-party notices.
