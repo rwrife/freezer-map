@@ -2,7 +2,7 @@
 
 A local-first mobile app for households to map freezer contents by appliance and bin, track portions and frozen dates, surface use-first items, and export inventory without accounts.
 
-> **Status:** Flutter foundation in active development. The app currently starts on an honest empty-state screen; inventory, persistence, backup, reminders, release signing, and store distribution are not implemented yet.
+> **Status:** Flutter foundation and the tested local domain/SQLite layer are in active development. The app still starts on an honest empty-state screen; inventory UI, backup, reminders, release signing, and store distribution are not implemented yet.
 
 ## Why
 
@@ -75,6 +75,8 @@ Flutter stable release, then run:
 ```bash
 flutter --version
 flutter pub get --enforce-lockfile
+git diff --exit-code
+dart run build_runner build
 git diff --exit-code
 dart format --output=none --set-exit-if-changed .
 dart run tool/check_architecture.dart

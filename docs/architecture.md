@@ -34,7 +34,7 @@ Dart source under `lib/`.
 - Presentation never constructs concrete database or platform adapters.
 - No layer uses a wall-clock global for domain decisions; application code
   receives clocks and identifier sources.
-- Structured records will live in app-private SQLite once issue #2 adds Drift.
+- Structured records live in schema-versioned app-private SQLite through Drift.
 - Baseline inventory requires no runtime permission or network access.
 - Backup/export and notification capabilities remain explicit, user-initiated
   platform adapters in later issues.
