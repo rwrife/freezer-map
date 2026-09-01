@@ -7,6 +7,7 @@ export 'package:freezer_map/domain/contracts.dart' show Clock, StableIdSource;
 export 'package:freezer_map/domain/policies.dart' show ZeroQuantityDisposition;
 
 typedef ItemWriteCheckpoint = Future<void> Function(InventoryAction action);
+typedef LocationWriteCheckpoint = Future<void> Function();
 
 final class InventoryCommands {
   const InventoryCommands({
@@ -14,12 +15,85 @@ final class InventoryCommands {
     required this.clock,
     required this.ids,
     this.afterItemWrite,
+    this.afterLocationWrite,
   });
 
   final TransactionalInventoryRepository repository;
   final Clock clock;
   final StableIdSource ids;
   final ItemWriteCheckpoint? afterItemWrite;
+  final LocationWriteCheckpoint? afterLocationWrite;
+
+  Future<(Appliance, Zone)> createInitialLocation({
+    required String applianceName,
+    required String zoneName,
+  }) => repository.transaction((repositories) async {
+    final appliance = Appliance(
+      id: ApplianceId(ids.next()),
+      name: applianceName,
+      sortOrder: 0,
+    );
+    final zone = Zone(
+      id: ZoneId(ids.next()),
+      applianceId: appliance.id,
+      name: zoneName,
+      sortOrder: 0,
+    );
+    await repositories.saveAppliance(appliance);
+    await _locationCheckpoint();
+    await repositories.saveZone(zone);
+    return (appliance, zone);
+  });
+
+  Future<void> reorderAppliances(
+    ApplianceId firstId,
+    ApplianceId secondId,
+  ) => repository.transaction((repositories) async {
+    final first = await _appliance(repositories, firstId);
+    final second = await _appliance(repositories, secondId);
+    _requireActiveAppliance(first);
+    _requireActiveAppliance(second);
+    await repositories.saveAppliance(
+      Appliance(id: first.id, name: first.name, sortOrder: second.sortOrder),
+    );
+    await _locationCheckpoint();
+    await repositories.saveAppliance(
+      Appliance(id: second.id, name: second.name, sortOrder: first.sortOrder),
+    );
+  });
+
+  Future<void> reorderZones(ZoneId firstId, ZoneId secondId) =>
+      repository.transaction((repositories) async {
+        final first = await _zone(repositories, firstId);
+        final second = await _zone(repositories, secondId);
+        _requireActiveZone(first);
+        _requireActiveZone(second);
+        if (first.applianceId != second.applianceId ||
+            first.parentId != second.parentId) {
+          throw const DomainValidationException(
+            'Only sibling zones can be reordered.',
+          );
+        }
+        await repositories.saveZone(
+          Zone(
+            id: first.id,
+            applianceId: first.applianceId,
+            parentId: first.parentId,
+            name: first.name,
+            sortOrder: second.sortOrder,
+          ),
+        );
+        await _locationCheckpoint();
+        await repositories.saveZone(
+          Zone(
+            id: second.id,
+            applianceId: second.applianceId,
+            parentId: second.parentId,
+            name: second.name,
+            sortOrder: first.sortOrder,
+          ),
+        );
+      });
 
   Future<Appliance> createAppliance({
     required String name,
@@ -31,6 +105,7 @@ final class InventoryCommands {
       sortOrder: sortOrder,
     );
     await repositories.saveAppliance(appliance);
+    await _locationCheckpoint();
     return appliance;
   });
 
@@ -43,6 +118,7 @@ final class InventoryCommands {
     _requireActiveAppliance(current);
     final updated = Appliance(id: id, name: name, sortOrder: sortOrder);
     await repositories.saveAppliance(updated);
+    await _locationCheckpoint();
     return updated;
   });
 
@@ -95,6 +171,7 @@ final class InventoryCommands {
     final zones = [...await repositories.zones(), zone];
     ZoneForest.validate(zones);
     await repositories.saveZone(zone);
+    await _locationCheckpoint();
     return zone;
   });
 
@@ -113,6 +190,7 @@ final class InventoryCommands {
       sortOrder: sortOrder,
     );
     await repositories.saveZone(updated);
+    await _locationCheckpoint();
     return updated;
   });
 
@@ -129,14 +207,32 @@ final class InventoryCommands {
             );
           }
         }
+        final zones = await repositories.zones();
+        var sortOrder = current.sortOrder;
+        if (newParentId != current.parentId) {
+          int? maximumDestinationOrder;
+          for (final zone in zones) {
+            if (zone.id == id ||
+                zone.applianceId != current.applianceId ||
+                zone.parentId != newParentId) {
+              continue;
+            }
+            if (maximumDestinationOrder == null ||
+                zone.sortOrder > maximumDestinationOrder) {
+              maximumDestinationOrder = zone.sortOrder;
+            }
+          }
+          sortOrder = maximumDestinationOrder == null
+              ? 0
+              : maximumDestinationOrder + 1;
+        }
         final moved = Zone(
           id: id,
           applianceId: current.applianceId,
           parentId: newParentId,
           name: current.name,
-          sortOrder: current.sortOrder,
+          sortOrder: sortOrder,
         );
-        final zones = await repositories.zones();
         final candidate = [
           for (final zone in zones)
             if (zone.id == id) moved else zone,
@@ -211,11 +307,12 @@ final class InventoryCommands {
     required PlanningDate frozenOn,
     required PlanningDate useFirstOn,
     required String notes,
+    required ZoneId zoneId,
   }) => _mutate(
     id,
     InventoryAction.edit,
     (item, now) => ItemPolicy.edit(
-      item,
+      ItemPolicy.move(item, zoneId, now: now),
       name: name,
       category: category,
       quantity: quantity,
@@ -225,6 +322,7 @@ final class InventoryCommands {
       notes: notes,
       now: now,
     ),
+    destination: zoneId,
   );
 
   Future<FreezerItem> incrementItem(ItemId id, PortionQuantity amount) =>
@@ -313,6 +411,11 @@ final class InventoryCommands {
     if (callback != null) {
       await callback(action);
     }
+  }
+
+  Future<void> _locationCheckpoint() async {
+    final callback = afterLocationWrite;
+    if (callback != null) await callback();
   }
 }
 

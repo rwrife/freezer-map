@@ -97,6 +97,60 @@ void main() {
   );
 
   test(
+    'moving a zone appends it to the destination without order collisions',
+    () async {
+      final (appliance, sourceParent) = await location();
+      final destinationParent = await commands.createZone(
+        applianceId: appliance.id,
+        name: 'Destination',
+        sortOrder: 1,
+      );
+      final movedZone = await commands.createZone(
+        applianceId: appliance.id,
+        parentId: sourceParent.id,
+        name: 'Moved',
+        sortOrder: 1,
+      );
+      await commands.createZone(
+        applianceId: appliance.id,
+        parentId: destinationParent.id,
+        name: 'First',
+        sortOrder: 0,
+      );
+      await commands.createZone(
+        applianceId: appliance.id,
+        parentId: destinationParent.id,
+        name: 'Second',
+        sortOrder: 1,
+      );
+
+      final moved = await commands.moveZone(
+        movedZone.id,
+        newParentId: destinationParent.id,
+      );
+      final unchanged = await commands.moveZone(
+        movedZone.id,
+        newParentId: destinationParent.id,
+      );
+      final destinationChildren = (await repository.zones())
+          .where((zone) => zone.parentId == destinationParent.id)
+          .toList();
+
+      expect(moved.sortOrder, 2);
+      expect(unchanged.sortOrder, 2);
+      expect(destinationChildren.map((zone) => zone.name), [
+        'First',
+        'Second',
+        'Moved',
+      ]);
+      expect(
+        destinationChildren.map((zone) => zone.sortOrder).toSet().length,
+        destinationChildren.length,
+      );
+    },
+  );
+
+  test(
     'rolls item write back when an injected post-write failure occurs',
     () async {
       final (_, zone) = await location();
@@ -130,6 +184,127 @@ void main() {
       expect((await repository.eventsFor(item.id)).length, 1);
     },
   );
+
+  test('atomic edit including destination rolls back item and audit', () async {
+    final (appliance, first) = await location();
+    final second = await commands.createZone(
+      applianceId: appliance.id,
+      name: 'Shelf',
+      sortOrder: 1,
+    );
+    final item = await commands.createItem(
+      name: 'Soup',
+      category: 'Meal',
+      zoneId: first.id,
+      quantity: PortionQuantity.parse('2'),
+      unit: PortionUnit('tubs'),
+      frozenOn: const PlanningDate.unknown(),
+      useFirstOn: const PlanningDate.unknown(),
+      notes: 'before',
+    );
+    commands = InventoryCommands(
+      repository: repository,
+      clock: clock,
+      ids: ids,
+      afterItemWrite: (_) async => throw StateError('injected failure'),
+    );
+
+    await expectLater(
+      commands.editItem(
+        item.id,
+        name: 'Stew',
+        category: 'Dinner',
+        quantity: PortionQuantity.parse('3'),
+        unit: PortionUnit('bags'),
+        frozenOn: PlanningDate.known(DateTime.utc(2026, 8, 1)),
+        useFirstOn: PlanningDate.known(DateTime.utc(2026, 9, 1)),
+        notes: 'after',
+        zoneId: second.id,
+      ),
+      throwsStateError,
+    );
+    final stored = (await repository.itemById(item.id))!;
+    expect(stored.name, item.name);
+    expect(stored.category, item.category);
+    expect(stored.zoneId, item.zoneId);
+    expect(stored.quantity, item.quantity);
+    expect(stored.notes, item.notes);
+    expect((await repository.eventsFor(item.id)).length, 1);
+  });
+
+  test('initial location is atomic when the zone write fails', () async {
+    commands = InventoryCommands(
+      repository: repository,
+      clock: clock,
+      ids: ids,
+      afterLocationWrite: () async => throw StateError('injected failure'),
+    );
+
+    await expectLater(
+      commands.createInitialLocation(
+        applianceName: 'Garage',
+        zoneName: 'Basket',
+      ),
+      throwsStateError,
+    );
+    expect(await repository.appliances(), isEmpty);
+    expect(await repository.zones(), isEmpty);
+  });
+
+  test('appliance and zone reorder swaps are atomic and ordered', () async {
+    final firstAppliance = await commands.createAppliance(
+      name: 'A',
+      sortOrder: 0,
+    );
+    final secondAppliance = await commands.createAppliance(
+      name: 'B',
+      sortOrder: 1,
+    );
+    final firstZone = await commands.createZone(
+      applianceId: firstAppliance.id,
+      name: 'One',
+      sortOrder: 0,
+    );
+    final secondZone = await commands.createZone(
+      applianceId: firstAppliance.id,
+      name: 'Two',
+      sortOrder: 1,
+    );
+
+    await commands.reorderAppliances(firstAppliance.id, secondAppliance.id);
+    await commands.reorderZones(firstZone.id, secondZone.id);
+    expect((await repository.appliances()).map((value) => value.name), [
+      'B',
+      'A',
+    ]);
+    expect((await repository.zones()).map((value) => value.name), [
+      'Two',
+      'One',
+    ]);
+
+    commands = InventoryCommands(
+      repository: repository,
+      clock: clock,
+      ids: ids,
+      afterLocationWrite: () async => throw StateError('injected failure'),
+    );
+    await expectLater(
+      commands.reorderAppliances(firstAppliance.id, secondAppliance.id),
+      throwsStateError,
+    );
+    await expectLater(
+      commands.reorderZones(firstZone.id, secondZone.id),
+      throwsStateError,
+    );
+    expect((await repository.appliances()).map((value) => value.name), [
+      'B',
+      'A',
+    ]);
+    expect((await repository.zones()).map((value) => value.name), [
+      'Two',
+      'One',
+    ]);
+  });
 
   test('supports the complete location and item command lifecycle', () async {
     final (appliance, first) = await location();
@@ -168,8 +343,8 @@ void main() {
       frozenOn: PlanningDate.known(DateTime.utc(2026, 8, 1)),
       useFirstOn: const PlanningDate.unknown(),
       notes: 'user-entered only',
+      zoneId: second.id,
     );
-    item = await commands.moveItem(item.id, second.id);
     item = await commands.markItemThawing(item.id);
     item = await commands.returnItemToFrozen(item.id);
     item = await commands.decrementItem(
@@ -194,7 +369,6 @@ void main() {
       <InventoryAction>[
         InventoryAction.create,
         InventoryAction.edit,
-        InventoryAction.move,
         InventoryAction.markThawing,
         InventoryAction.returnToFrozen,
         InventoryAction.decrement,
