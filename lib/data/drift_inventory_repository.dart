@@ -114,13 +114,13 @@ final class DriftInventoryRepository
     await database
         .into(database.zones)
         .insertOnConflictUpdate(
-          ZoneRow(
-            id: zone.id.value,
-            applianceId: zone.applianceId.value,
-            parentId: zone.parentId?.value,
-            name: zone.name,
-            sortOrder: zone.sortOrder,
-            isArchived: zone.isArchived,
+          ZonesCompanion(
+            id: Value(zone.id.value),
+            applianceId: Value(zone.applianceId.value),
+            parentId: Value(zone.parentId?.value),
+            name: Value(zone.name),
+            sortOrder: Value(zone.sortOrder),
+            isArchived: Value(zone.isArchived),
           ),
         );
   }
@@ -166,21 +166,21 @@ final class DriftInventoryRepository
     await database
         .into(database.freezerItems)
         .insertOnConflictUpdate(
-          FreezerItemRow(
-            id: item.id.value,
-            name: item.name,
-            category: item.category,
-            zoneId: item.zoneId.value,
-            quantity: item.quantity.canonical,
-            unit: item.unit.value,
-            frozenOn: item.frozenOn.value,
-            useFirstOn: item.useFirstOn.value,
-            thawState: item.thawState.name,
-            notes: item.notes,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
-            thawStateChangedAt: item.thawStateChangedAt,
-            archivedAt: item.archivedAt,
+          FreezerItemsCompanion(
+            id: Value(item.id.value),
+            name: Value(item.name),
+            category: Value(item.category),
+            zoneId: Value(item.zoneId.value),
+            quantity: Value(item.quantity.canonical),
+            unit: Value(item.unit.value),
+            frozenOn: Value(item.frozenOn.value),
+            useFirstOn: Value(item.useFirstOn.value),
+            thawState: Value(item.thawState.name),
+            notes: Value(item.notes),
+            createdAt: Value(item.createdAt),
+            updatedAt: Value(item.updatedAt),
+            thawStateChangedAt: Value(item.thawStateChangedAt),
+            archivedAt: Value(item.archivedAt),
           ),
         );
   }

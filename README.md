@@ -2,7 +2,9 @@
 
 A local-first mobile app for households to map freezer contents by appliance and bin, track portions and frozen dates, surface use-first items, and export inventory without accounts.
 
-> **Status:** Flutter foundation and the tested local domain/SQLite layer are in active development. The app still starts on an honest empty-state screen; inventory UI, backup, reminders, release signing, and store distribution are not implemented yet.
+> **Status:** The Flutter foundation, app-private SQLite layer, and primary
+> add/find/use/move/thaw workflow are implemented with automated tests. Backup,
+> reminders, release signing, and store distribution are not implemented yet.
 
 ## Why
 
@@ -101,9 +103,9 @@ No signing material belongs in this repository.
 
 See [architecture boundaries](docs/architecture.md) and the
 [toolchain/dependency license record](docs/dependencies.md) before adding a
-package. The current application has no runtime third-party plugin, analytics,
-advertising, account, networking, database, broad file-access, or permission
-integration.
+package. The current application uses Drift with SQLite and `path_provider` only
+for its app-private local store. It has no analytics, advertising, account,
+networking, broad file-access, or permission integration.
 
 ## Milestones
 

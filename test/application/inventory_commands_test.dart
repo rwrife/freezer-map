@@ -376,6 +376,120 @@ void main() {
       ],
     );
   });
+
+  test(
+    'rapid independent quantity commands serialize without lost updates',
+    () async {
+      final (_, zone) = await location();
+      final item = await commands.createItem(
+        name: 'Soup',
+        category: '',
+        zoneId: zone.id,
+        quantity: PortionQuantity.parse('1'),
+        unit: PortionUnit('tubs'),
+        frozenOn: const PlanningDate.unknown(),
+        useFirstOn: const PlanningDate.unknown(),
+        notes: '',
+      );
+
+      await Future.wait([
+        commands.incrementItem(item.id, PortionQuantity.parse('0.5')),
+        commands.incrementItem(item.id, PortionQuantity.parse('0.5')),
+      ]);
+
+      expect((await repository.itemById(item.id))!.quantity.canonical, '2');
+      expect(
+        (await repository.eventsFor(item.id))
+            .where((event) => event.action == InventoryAction.increment),
+        hasLength(2),
+      );
+    },
+  );
+
+  test(
+    'undo restores quantity, zero archive, move, and thaw transitions',
+    () async {
+      final (appliance, first) = await location();
+      final second = await commands.createZone(
+        applianceId: appliance.id,
+        name: 'Shelf',
+        sortOrder: 1,
+      );
+      final item = await commands.createItem(
+        name: 'Soup',
+        category: 'Meals',
+        zoneId: first.id,
+        quantity: PortionQuantity.parse('2'),
+        unit: PortionUnit('tubs'),
+        frozenOn: const PlanningDate.unknown(),
+        useFirstOn: const PlanningDate.unknown(),
+        notes: '',
+      );
+
+      final increment = await commands.incrementItemWithUndo(
+        item.id,
+        PortionQuantity.parse('1'),
+      );
+      await commands.undoItemChange(increment);
+      expect((await repository.itemById(item.id))!.quantity.canonical, '2');
+
+      final move = await commands.moveItemWithUndo(item.id, second.id);
+      await commands.undoItemChange(move);
+      expect((await repository.itemById(item.id))!.zoneId, first.id);
+
+      final thaw = await commands.markItemThawingWithUndo(item.id);
+      await commands.undoItemChange(thaw);
+      expect((await repository.itemById(item.id))!.thawState, ThawState.frozen);
+
+      final consume = await commands.decrementItemWithUndo(
+        item.id,
+        PortionQuantity.parse('2'),
+        whenZero: ZeroQuantityDisposition.archive,
+      );
+      expect(consume.after.isArchived, isTrue);
+      expect(consume.after.quantity.isZero, isTrue);
+      final restored = await commands.undoItemChange(consume);
+      expect(restored.isArchived, isFalse);
+      expect((await repository.itemById(item.id))!.isArchived, isFalse);
+      expect(restored.quantity.canonical, '2');
+      expect(
+        (await repository.eventsFor(item.id))
+            .where((event) => event.action == InventoryAction.undo),
+        hasLength(4),
+      );
+    },
+  );
+
+  test('undo fails closed after a later item mutation', () async {
+    final (_, zone) = await location();
+    final item = await commands.createItem(
+      name: 'Soup',
+      category: '',
+      zoneId: zone.id,
+      quantity: PortionQuantity.parse('1'),
+      unit: PortionUnit('tubs'),
+      frozenOn: const PlanningDate.unknown(),
+      useFirstOn: const PlanningDate.unknown(),
+      notes: '',
+    );
+    final firstChange = await commands.incrementItemWithUndo(
+      item.id,
+      PortionQuantity.parse('1'),
+    );
+    await commands.incrementItem(item.id, PortionQuantity.parse('1'));
+
+    await expectLater(
+      commands.undoItemChange(firstChange),
+      throwsA(
+        isA<DomainValidationException>().having(
+          (error) => error.message,
+          'message',
+          contains('changed again'),
+        ),
+      ),
+    );
+    expect((await repository.itemById(item.id))!.quantity.canonical, '3');
+  });
 }
 
 final class _Clock implements Clock {

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:freezer_map/application/inventory_commands.dart';
 import 'package:freezer_map/domain/contracts.dart';
 import 'package:freezer_map/domain/entities.dart';
 import 'package:freezer_map/domain/value_objects.dart';
+import 'package:freezer_map/presentation/inventory_browser.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({
@@ -25,6 +27,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   List<Zone> _zones = const [];
   List<FreezerItem> _items = const [];
   ZoneId? _recentZoneId;
+  Future<void> _itemMutationQueue = Future.value();
 
   @override
   void initState() {
@@ -41,7 +44,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     try {
       final appliances = await widget.repository.appliances();
       final zones = await widget.repository.zones();
-      final items = await widget.repository.items();
+      final items = await widget.repository.items(includeArchived: true);
       if (!mounted) return;
       setState(() {
         _appliances = appliances;
@@ -137,85 +140,79 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
       );
     }
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        for (final appliance in _appliances) ...[
+    return InventoryBrowser(
+      appliances: _appliances,
+      zones: _zones,
+      items: _items,
+      locationOverview: _locationOverview(),
+      breadcrumbFor: (zoneId) => _breadcrumb(_zone(zoneId)),
+      onIncrement: _incrementItem,
+      onDecrement: _decrementItem,
+      onConsumeAll: _consumeAll,
+      onMove: _moveItem,
+      onThaw: _markThawing,
+      onReturnToFrozen: _returnToFrozen,
+      onEdit: (item) => _editItem(item),
+      onArchive: _archiveItem,
+    );
+  }
+
+  Widget _locationOverview() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('Locations', style: Theme.of(context).textTheme.titleLarge),
+      for (final appliance in _appliances) ...[
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          title: Text(
+            appliance.name,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          trailing: PopupMenuButton<String>(
+            key: Key('appliance-menu-${appliance.id.value}'),
+            tooltip: 'Actions for ${appliance.name}',
+            onSelected: (action) => _applianceAction(appliance, action),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'zone', child: Text('Add top-level zone')),
+              PopupMenuItem(value: 'rename', child: Text('Rename appliance')),
+              PopupMenuItem(value: 'up', child: Text('Move appliance up')),
+              PopupMenuItem(value: 'down', child: Text('Move appliance down')),
+              PopupMenuItem(value: 'archive', child: Text('Archive appliance')),
+            ],
+          ),
+        ),
+        for (final zone in _zones.where(
+          (zone) => zone.applianceId == appliance.id,
+        ))
           ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              appliance.name,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            title: Text(zone.name),
+            subtitle: Text(_breadcrumb(zone)),
             trailing: PopupMenuButton<String>(
-              key: Key('appliance-menu-${appliance.id.value}'),
-              tooltip: 'Actions for ${appliance.name}',
-              onSelected: (action) => _applianceAction(appliance, action),
+              key: Key('zone-menu-${zone.id.value}'),
+              tooltip: 'Actions for ${zone.name}',
+              onSelected: (action) => _zoneAction(zone, action),
               itemBuilder: (context) => const [
-                PopupMenuItem(value: 'zone', child: Text('Add top-level zone')),
-                PopupMenuItem(value: 'rename', child: Text('Rename appliance')),
-                PopupMenuItem(value: 'up', child: Text('Move appliance up')),
-                PopupMenuItem(
-                  value: 'down',
-                  child: Text('Move appliance down'),
-                ),
-                PopupMenuItem(
-                  value: 'archive',
-                  child: Text('Archive appliance'),
-                ),
+                PopupMenuItem(value: 'child', child: Text('Add subzone')),
+                PopupMenuItem(value: 'rename', child: Text('Rename zone')),
+                PopupMenuItem(value: 'up', child: Text('Move zone up')),
+                PopupMenuItem(value: 'down', child: Text('Move zone down')),
+                PopupMenuItem(value: 'move', child: Text('Move zone')),
+                PopupMenuItem(value: 'archive', child: Text('Archive zone')),
               ],
             ),
           ),
-          for (final zone in _zones.where(
-            (zone) => zone.applianceId == appliance.id,
-          ))
-            ListTile(
-              title: Text(zone.name),
-              subtitle: Text(_breadcrumb(zone)),
-              trailing: PopupMenuButton<String>(
-                key: Key('zone-menu-${zone.id.value}'),
-                tooltip: 'Actions for ${zone.name}',
-                onSelected: (action) => _zoneAction(zone, action),
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'child', child: Text('Add subzone')),
-                  PopupMenuItem(value: 'rename', child: Text('Rename zone')),
-                  PopupMenuItem(value: 'up', child: Text('Move zone up')),
-                  PopupMenuItem(value: 'down', child: Text('Move zone down')),
-                  PopupMenuItem(value: 'move', child: Text('Move zone')),
-                  PopupMenuItem(value: 'archive', child: Text('Archive zone')),
-                ],
-              ),
-            ),
-          for (final item in _items.where(
-            (item) => _zones.any(
-              (zone) =>
-                  zone.id == item.zoneId && zone.applianceId == appliance.id,
-            ),
-          ))
-            Card(
-              child: ListTile(
-                title: Text(item.name),
-                subtitle: Text(
-                  '${item.quantity.canonical} ${item.unit.value} • '
-                  '${_breadcrumb(_zone(item.zoneId))}',
-                ),
-                trailing: IconButton(
-                  key: Key('item-edit-${item.id.value}'),
-                  tooltip: 'Edit ${item.name}',
-                  onPressed: () => _editItem(item),
-                  icon: const Icon(Icons.edit),
-                ),
-              ),
-            ),
-        ],
       ],
-    );
-  }
+    ],
+  );
 
   Zone _zone(ZoneId id) => _zones.firstWhere((zone) => zone.id == id);
 
   Future<void> _editItem([FreezerItem? item]) async {
-    final savedZone = await showDialog<ZoneId>(
+    final result = await showDialog<_ItemSaveResult>(
       context: context,
       builder: (context) => _ItemDialog(
         commands: widget.commands,
@@ -225,10 +222,194 @@ class _InventoryScreenState extends State<InventoryScreen> {
         recentZoneId: _recentZoneId,
       ),
     );
-    if (savedZone == null) return;
+    if (result == null) return;
     if (!mounted) return;
-    _recentZoneId = savedZone;
+    _recentZoneId = result.zoneId;
     await _reload();
+    final change = result.change;
+    if (change == null) {
+      _announceAndNotify('Item added to on-device inventory.');
+    } else {
+      _showUndo(change, 'Item changes saved.');
+    }
+  }
+
+  Future<void> _incrementItem(FreezerItem item) async {
+    final amount = await showDialog<PortionQuantity>(
+      context: context,
+      builder: (context) =>
+          const _QuantityDialog(title: 'Add portions', actionLabel: 'Add'),
+    );
+    if (amount == null) return;
+    await _queueItemChange(
+      () => widget.commands.incrementItemWithUndo(item.id, amount),
+      '${item.name} increased by ${amount.canonical} ${item.unit.value}.',
+    );
+  }
+
+  Future<void> _decrementItem(FreezerItem item) async {
+    final amount = await showDialog<PortionQuantity>(
+      context: context,
+      builder: (context) => _QuantityDialog(
+        title: 'Use portions',
+        actionLabel: 'Use',
+        maximum: item.quantity,
+      ),
+    );
+    if (amount == null) return;
+    await _queueItemChange(
+      () => widget.commands.decrementItemWithUndo(
+        item.id,
+        amount,
+        whenZero: ZeroQuantityDisposition.archive,
+      ),
+      amount == item.quantity
+          ? '${item.name} quantity reached zero and was archived.'
+          : '${item.name} decreased by ${amount.canonical} ${item.unit.value}.',
+    );
+  }
+
+  Future<void> _consumeAll(FreezerItem item) async {
+    final confirmed = await _confirm(
+      title: 'Consume all ${item.name}?',
+      message: 'This sets the quantity to zero and archives the item. Nothing is deleted.',
+      action: 'Consume all',
+    );
+    if (!confirmed) return;
+    await _queueItemChange(
+      () => widget.commands.decrementItemWithUndo(
+        item.id,
+        item.quantity,
+        whenZero: ZeroQuantityDisposition.archive,
+      ),
+      '${item.name} consumed and archived.',
+    );
+  }
+
+  Future<void> _moveItem(FreezerItem item) async {
+    final destination = await showDialog<ZoneId>(
+      context: context,
+      builder: (context) => _MoveItemDialog(
+        item: item,
+        zones: _zones,
+        breadcrumbs: {for (final zone in _zones) zone.id: _breadcrumb(zone)},
+      ),
+    );
+    if (destination == null || destination == item.zoneId) return;
+    await _queueItemChange(
+      () => widget.commands.moveItemWithUndo(item.id, destination),
+      '${item.name} moved to ${_breadcrumb(_zone(destination))}.',
+    );
+  }
+
+  Future<void> _markThawing(FreezerItem item) => _queueItemChange(
+    () => widget.commands.markItemThawingWithUndo(item.id),
+    '${item.name} marked thawing.',
+  );
+
+  Future<void> _returnToFrozen(FreezerItem item) => _queueItemChange(
+    () => widget.commands.returnItemToFrozenWithUndo(item.id),
+    '${item.name} returned to frozen.',
+  );
+
+  Future<void> _archiveItem(FreezerItem item) async {
+    final confirmed = await _confirm(
+      title: 'Archive ${item.name}?',
+      message:
+          'Archiving hides the item from active inventory. Nothing is deleted.',
+      action: 'Archive',
+    );
+    if (!confirmed) return;
+    await _queueItemChange(
+      () => widget.commands.archiveItemWithUndo(item.id),
+      '${item.name} archived.',
+    );
+  }
+
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String action,
+  }) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(action),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  Future<void> _queueItemChange(
+    Future<ItemChange> Function() operation,
+    String successMessage,
+  ) {
+    final queued = _itemMutationQueue.then((_) async {
+      try {
+        final change = await operation();
+        await _reload();
+        if (mounted) _showUndo(change, successMessage);
+      } catch (error) {
+        if (mounted) _announceAndNotify(_message(error));
+      }
+    });
+    _itemMutationQueue = queued;
+    return queued;
+  }
+
+  void _showUndo(ItemChange change, String message) {
+    if (!mounted) return;
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      message,
+      Directionality.of(context),
+    );
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          key: Key('undo-${change.action.name}'),
+          label: 'Undo',
+          onPressed: () {
+            _queueItemChange(() async {
+              final restored = await widget.commands.undoItemChange(change);
+              return ItemChange(
+                before: change.after,
+                after: restored,
+                action: InventoryAction.undo,
+              );
+            }, '${change.before.name} restored.');
+          },
+        ),
+      ),
+    );
+  }
+
+  void _announceAndNotify(String message) {
+    if (!mounted) return;
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      message,
+      Directionality.of(context),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(label: 'Dismiss', onPressed: () {}),
+      ),
+    );
   }
 
   Future<bool?> _askName({
@@ -506,6 +687,141 @@ class _InventoryScreenState extends State<InventoryScreen> {
 String _message(Object error) {
   if (error is DomainValidationException) return error.message;
   return 'Could not save to on-device storage. Try again; your entries are still here.';
+}
+
+final class _ItemSaveResult {
+  const _ItemSaveResult(this.zoneId, this.change);
+
+  final ZoneId zoneId;
+  final ItemChange? change;
+}
+
+final class _QuantityDialog extends StatefulWidget {
+  const _QuantityDialog({
+    required this.title,
+    required this.actionLabel,
+    this.maximum,
+  });
+
+  final String title;
+  final String actionLabel;
+  final PortionQuantity? maximum;
+
+  @override
+  State<_QuantityDialog> createState() => _QuantityDialogState();
+}
+
+final class _QuantityDialogState extends State<_QuantityDialog> {
+  final _form = GlobalKey<FormState>();
+  final _amount = TextEditingController(text: '1');
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: Form(
+      key: _form,
+      child: TextFormField(
+        key: const Key('portion-amount'),
+        controller: _amount,
+        autofocus: true,
+        decoration: InputDecoration(
+          labelText: 'Exact amount',
+          helperText: widget.maximum == null
+              ? 'Enter a positive amount.'
+              : 'Available: ${widget.maximum!.canonical}',
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        validator: (source) {
+          try {
+            final amount = PortionQuantity.parse(source ?? '');
+            if (!amount.isPositive) return 'Enter an amount greater than zero.';
+            final maximum = widget.maximum;
+            if (maximum != null && amount.compareTo(maximum) > 0) {
+              return 'Amount cannot exceed ${maximum.canonical}.';
+            }
+          } catch (_) {
+            return 'Enter a valid positive number.';
+          }
+          return null;
+        },
+        onFieldSubmitted: (_) => _submit(),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: _submit, child: Text(widget.actionLabel)),
+    ],
+  );
+
+  void _submit() {
+    if (!_form.currentState!.validate()) return;
+    Navigator.pop(context, PortionQuantity.parse(_amount.text));
+  }
+}
+
+final class _MoveItemDialog extends StatefulWidget {
+  const _MoveItemDialog({
+    required this.item,
+    required this.zones,
+    required this.breadcrumbs,
+  });
+
+  final FreezerItem item;
+  final List<Zone> zones;
+  final Map<ZoneId, String> breadcrumbs;
+
+  @override
+  State<_MoveItemDialog> createState() => _MoveItemDialogState();
+}
+
+final class _MoveItemDialogState extends State<_MoveItemDialog> {
+  late ZoneId _destination = widget.item.zoneId;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('Move ${widget.item.name}'),
+    content: DropdownButtonFormField<ZoneId>(
+      key: const Key('move-item-destination'),
+      initialValue: _destination,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'New appliance and zone',
+        border: OutlineInputBorder(),
+      ),
+      items: [
+        for (final zone in widget.zones)
+          DropdownMenuItem(
+            value: zone.id,
+            child: Text(
+              widget.breadcrumbs[zone.id]!,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: (value) {
+        if (value != null) setState(() => _destination = value);
+      },
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _destination),
+        child: const Text('Move'),
+      ),
+    ],
+  );
 }
 
 class _ItemDialog extends StatefulWidget {
@@ -851,6 +1167,7 @@ class _ItemDialogState extends State<_ItemDialog> {
     setState(() => _saving = true);
     try {
       final item = widget.item;
+      ItemChange? change;
       if (item == null) {
         await widget.commands.createItem(
           name: _name.text,
@@ -863,7 +1180,7 @@ class _ItemDialogState extends State<_ItemDialog> {
           notes: _notes.text,
         );
       } else {
-        await widget.commands.editItem(
+        change = await widget.commands.editItemWithUndo(
           item.id,
           name: _name.text,
           category: _category.text,
@@ -875,7 +1192,9 @@ class _ItemDialogState extends State<_ItemDialog> {
           zoneId: _zoneId!,
         );
       }
-      if (mounted) Navigator.pop(context, _zoneId);
+      if (mounted) {
+        Navigator.pop(context, _ItemSaveResult(_zoneId!, change));
+      }
     } catch (error) {
       if (mounted) {
         setState(() {

@@ -9,6 +9,18 @@ export 'package:freezer_map/domain/policies.dart' show ZeroQuantityDisposition;
 typedef ItemWriteCheckpoint = Future<void> Function(InventoryAction action);
 typedef LocationWriteCheckpoint = Future<void> Function();
 
+final class ItemChange {
+  const ItemChange({
+    required this.before,
+    required this.after,
+    required this.action,
+  });
+
+  final FreezerItem before;
+  final FreezerItem after;
+  final InventoryAction action;
+}
+
 final class InventoryCommands {
   const InventoryCommands({
     required this.repository,
@@ -308,7 +320,29 @@ final class InventoryCommands {
     required PlanningDate useFirstOn,
     required String notes,
     required ZoneId zoneId,
-  }) => _mutate(
+  }) async => (await editItemWithUndo(
+    id,
+    name: name,
+    category: category,
+    quantity: quantity,
+    unit: unit,
+    frozenOn: frozenOn,
+    useFirstOn: useFirstOn,
+    notes: notes,
+    zoneId: zoneId,
+  )).after;
+
+  Future<ItemChange> editItemWithUndo(
+    ItemId id, {
+    required String name,
+    required String category,
+    required PortionQuantity quantity,
+    required PortionUnit unit,
+    required PlanningDate frozenOn,
+    required PlanningDate useFirstOn,
+    required String notes,
+    required ZoneId zoneId,
+  }) => _mutateWithUndo(
     id,
     InventoryAction.edit,
     (item, now) => ItemPolicy.edit(
@@ -325,8 +359,11 @@ final class InventoryCommands {
     destination: zoneId,
   );
 
-  Future<FreezerItem> incrementItem(ItemId id, PortionQuantity amount) =>
-      _mutate(
+  Future<FreezerItem> incrementItem(ItemId id, PortionQuantity amount) async =>
+      (await incrementItemWithUndo(id, amount)).after;
+
+  Future<ItemChange> incrementItemWithUndo(ItemId id, PortionQuantity amount) =>
+      _mutateWithUndo(
         id,
         InventoryAction.increment,
         (item, now) => ItemPolicy.increment(item, amount, now: now),
@@ -336,39 +373,84 @@ final class InventoryCommands {
     ItemId id,
     PortionQuantity amount, {
     required ZeroQuantityDisposition whenZero,
-  }) => _mutate(
+  }) async =>
+      (await decrementItemWithUndo(id, amount, whenZero: whenZero)).after;
+
+  Future<ItemChange> decrementItemWithUndo(
+    ItemId id,
+    PortionQuantity amount, {
+    required ZeroQuantityDisposition whenZero,
+  }) => _mutateWithUndo(
     id,
     InventoryAction.decrement,
     (item, now) =>
         ItemPolicy.decrement(item, amount, now: now, whenZero: whenZero),
   );
 
-  Future<FreezerItem> moveItem(ItemId id, ZoneId destination) => _mutate(
-    id,
-    InventoryAction.move,
-    (item, now) => ItemPolicy.move(item, destination, now: now),
-    destination: destination,
-  );
+  Future<FreezerItem> moveItem(ItemId id, ZoneId destination) async =>
+      (await moveItemWithUndo(id, destination)).after;
 
-  Future<FreezerItem> markItemThawing(ItemId id) => _mutate(
+  Future<ItemChange> moveItemWithUndo(ItemId id, ZoneId destination) =>
+      _mutateWithUndo(
+        id,
+        InventoryAction.move,
+        (item, now) => ItemPolicy.move(item, destination, now: now),
+        destination: destination,
+      );
+
+  Future<FreezerItem> markItemThawing(ItemId id) async =>
+      (await markItemThawingWithUndo(id)).after;
+
+  Future<ItemChange> markItemThawingWithUndo(ItemId id) => _mutateWithUndo(
     id,
     InventoryAction.markThawing,
     (item, now) => ItemPolicy.markThawing(item, now: now),
   );
 
-  Future<FreezerItem> returnItemToFrozen(ItemId id) => _mutate(
+  Future<FreezerItem> returnItemToFrozen(ItemId id) async =>
+      (await returnItemToFrozenWithUndo(id)).after;
+
+  Future<ItemChange> returnItemToFrozenWithUndo(ItemId id) => _mutateWithUndo(
     id,
     InventoryAction.returnToFrozen,
     (item, now) => ItemPolicy.returnToFrozen(item, now: now),
   );
 
-  Future<FreezerItem> archiveItem(ItemId id) => _mutate(
+  Future<FreezerItem> archiveItem(ItemId id) async =>
+      (await archiveItemWithUndo(id)).after;
+
+  Future<ItemChange> archiveItemWithUndo(ItemId id) => _mutateWithUndo(
     id,
     InventoryAction.archive,
     (item, now) => ItemPolicy.archive(item, now: now),
   );
 
-  Future<FreezerItem> _mutate(
+  Future<FreezerItem> undoItemChange(
+    ItemChange change,
+  ) => repository.transaction((repositories) async {
+    final current = await repositories.itemById(change.after.id);
+    if (current == null || !_sameItemState(current, change.after)) {
+      throw const DomainValidationException(
+        'This change can no longer be undone because the item changed again.',
+      );
+    }
+    if (!change.before.isArchived) {
+      await _requireActiveLocation(repositories, change.before.zoneId);
+    }
+    final now = clock.nowUtc().toUtc();
+    await repositories.saveItem(change.before);
+    await _checkpoint(InventoryAction.undo);
+    await _appendEvent(
+      repositories,
+      change.before,
+      InventoryAction.undo,
+      current,
+      now,
+    );
+    return change.before;
+  });
+
+  Future<ItemChange> _mutateWithUndo(
     ItemId id,
     InventoryAction action,
     FreezerItem Function(FreezerItem item, DateTime now) change, {
@@ -386,7 +468,7 @@ final class InventoryCommands {
     await repositories.saveItem(updated);
     await _checkpoint(action);
     await _appendEvent(repositories, updated, action, current, now);
-    return updated;
+    return ItemChange(before: current, after: updated, action: action);
   });
 
   Future<void> _appendEvent(
@@ -422,6 +504,22 @@ final class InventoryCommands {
 String _summary(FreezerItem item) =>
     'quantity=${item.quantity.canonical};zone=${item.zoneId.value};'
     'thaw=${item.thawState.name};archived=${item.isArchived}';
+
+bool _sameItemState(FreezerItem left, FreezerItem right) =>
+    left.id == right.id &&
+    left.name == right.name &&
+    left.category == right.category &&
+    left.zoneId == right.zoneId &&
+    left.quantity == right.quantity &&
+    left.unit == right.unit &&
+    left.frozenOn == right.frozenOn &&
+    left.useFirstOn == right.useFirstOn &&
+    left.thawState == right.thawState &&
+    left.notes == right.notes &&
+    left.createdAt == right.createdAt &&
+    left.updatedAt == right.updatedAt &&
+    left.thawStateChangedAt == right.thawStateChangedAt &&
+    left.archivedAt == right.archivedAt;
 
 Future<Appliance> _appliance(
   InventoryRepositories repositories,
