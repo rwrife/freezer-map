@@ -11,6 +11,7 @@ enum InventoryAction {
   markThawing,
   returnToFrozen,
   archive,
+  undo,
 }
 
 enum ReminderPrivacyMode { itemName, generic }
