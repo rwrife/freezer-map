@@ -3,8 +3,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:freezer_map/application/inventory_commands.dart';
 import 'package:freezer_map/data/app_database.dart';
+import 'package:freezer_map/data/data_portability.dart';
 import 'package:freezer_map/data/database.dart';
 import 'package:freezer_map/data/drift_inventory_repository.dart';
+import 'package:freezer_map/platform/document_gateway.dart';
 import 'package:freezer_map/presentation/freezer_map_app.dart';
 
 Future<void> main() async {
@@ -80,6 +82,8 @@ class _FreezerMapBootstrapState extends State<FreezerMapBootstrap> {
         repository: DriftInventoryRepository(database),
         clock: const _SystemClock(),
         ids: _ids,
+        portability: DataPortabilityService(database),
+        documents: const FilePickerDocumentGateway(),
       );
     }
     return MaterialApp(

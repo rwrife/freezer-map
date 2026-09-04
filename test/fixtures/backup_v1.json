@@ -1,0 +1,34 @@
+{
+  "format": "freezer-map-backup",
+  "version": 1,
+  "exportedAt": "2026-09-04T00:00:00.000Z",
+  "schema": {"application": "freezer-map", "database": 1},
+  "data": {
+    "appliances": [
+      {"id": "fixture-appliance", "name": "Test freezer", "sortOrder": 0, "isArchived": false}
+    ],
+    "zones": [
+      {"id": "fixture-zone", "applianceId": "fixture-appliance", "parentId": null, "name": "Test basket", "sortOrder": 0, "isArchived": false}
+    ],
+    "items": [
+      {
+        "id": "fixture-item",
+        "name": "Example meal",
+        "category": "Fixture",
+        "zoneId": "fixture-zone",
+        "quantity": "1.5",
+        "unit": "portions",
+        "frozenOn": null,
+        "useFirstOn": "2026-09-30T00:00:00.000Z",
+        "thawState": "frozen",
+        "notes": "Synthetic test data only",
+        "createdAt": "2026-09-04T00:00:00.000Z",
+        "updatedAt": "2026-09-04T00:00:00.000Z",
+        "thawStateChangedAt": "2026-09-04T00:00:00.000Z",
+        "archivedAt": null
+      }
+    ],
+    "events": [],
+    "reminders": []
+  }
+}
