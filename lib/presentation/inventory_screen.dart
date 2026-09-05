@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:freezer_map/application/data_management.dart';
 import 'package:freezer_map/application/inventory_commands.dart';
 import 'package:freezer_map/domain/contracts.dart';
 import 'package:freezer_map/domain/entities.dart';
 import 'package:freezer_map/domain/value_objects.dart';
+import 'package:freezer_map/presentation/data_settings_screen.dart';
 import 'package:freezer_map/presentation/inventory_browser.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({
     required this.repository,
     required this.commands,
+    this.portability,
+    this.documents,
+    this.nowUtc,
     super.key,
   });
 
   final TransactionalInventoryRepository repository;
   final InventoryCommands commands;
+  final DataPortability? portability;
+  final DocumentGateway? documents;
+  final DateTime Function()? nowUtc;
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
@@ -75,6 +83,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
       appBar: AppBar(
         title: const Text('Freezer Map'),
         actions: [
+          if (widget.portability != null && widget.documents != null)
+            IconButton(
+              tooltip: 'Data and privacy settings',
+              onPressed: _openDataSettings,
+              icon: const Icon(Icons.settings_outlined),
+            ),
           if (!_loading && _error == null && _appliances.isNotEmpty)
             IconButton(
               tooltip: 'Add appliance',
@@ -93,6 +107,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
             )
           : null,
     );
+  }
+
+  Future<void> _openDataSettings() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => DataSettingsScreen(
+          portability: widget.portability!,
+          documents: widget.documents!,
+          nowUtc: widget.nowUtc ?? () => DateTime.now().toUtc(),
+        ),
+      ),
+    );
+    if (mounted) await _reload();
   }
 
   Widget _body() {

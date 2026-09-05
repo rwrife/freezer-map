@@ -27,16 +27,20 @@ device evidence; those remain separate CI/platform gates.
 | `flutter_lints` | 6.0.0 | Maintained baseline lint rules | BSD 3-Clause |
 | `decimal` | 3.2.6 | Exact, non-binary portion quantities | Apache-2.0 |
 | `drift` | 2.34.3 | Typed SQLite schema, queries, and transactions | MIT |
+| `file_picker` | 12.2.0 | User-initiated scoped platform open/save document pickers | MIT |
 | `path` | 1.9.1 | Portable app-private database path joining | BSD 3-Clause |
 | `path_provider` | 2.1.6 | OS application-support directory lookup | BSD 3-Clause |
 | `unorm_dart` | 0.3.2 | Unicode normalization for deterministic local search | MIT |
 | `build_runner` | 2.16.0 (development only) | Deterministic code-generation runner | BSD 3-Clause |
 | `drift_dev` | 2.34.5 (development only) | Drift schema/code generator | MIT |
+| `file_picker_platform_interface` | 3.3.0 (test only) | Fakeable picker boundary for adapter tests | MIT |
 
 Drift and its locked transitive `sqlite3` dependency provide the local database;
 `path_provider` selects the operating system's app-private support directory.
+`file_picker` delegates to the operating system's scoped document picker only
+after an explicit open/save action; it requests no broad filesystem permission.
 These packages add no account, analytics, advertising, telemetry, notification,
-broad filesystem permission, or application network behavior. The native
+or application network behavior. The native
 SQLite library is resolved through Dart native assets; the obsolete
 `sqlite3_flutter_libs` package is intentionally not used. Later package
 additions must record purpose, version, license, privacy/permission impact, and

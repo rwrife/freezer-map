@@ -2,9 +2,10 @@
 
 A local-first mobile app for households to map freezer contents by appliance and bin, track portions and frozen dates, surface use-first items, and export inventory without accounts.
 
-> **Status:** The Flutter foundation, app-private SQLite layer, and primary
-> add/find/use/move/thaw workflow are implemented with automated tests. Backup,
-> reminders, release signing, and store distribution are not implemented yet.
+> **Status:** The Flutter foundation, app-private SQLite layer, primary
+> add/find/use/move/thaw workflow, and transactional backup/restore/export/delete
+> controls are implemented with automated tests. Reminders, release signing,
+> and store distribution are not implemented yet.
 
 ## Why
 
@@ -101,11 +102,12 @@ The scaffold identifiers are deliberately non-production placeholders:
 Replace both with an owned reverse-DNS identifier before signing or release.
 No signing material belongs in this repository.
 
-See [architecture boundaries](docs/architecture.md) and the
-[toolchain/dependency license record](docs/dependencies.md) before adding a
-package. The current application uses Drift with SQLite and `path_provider` only
-for its app-private local store. It has no analytics, advertising, account,
-networking, broad file-access, or permission integration.
+See [the backup format and restore contract](docs/backup-format.md),
+[architecture boundaries](docs/architecture.md), and the
+[toolchain/dependency license record](docs/dependencies.md). The current
+application uses Drift with SQLite for its app-private local store and
+`file_picker` for user-initiated scoped document choices. It has no analytics,
+advertising, account, networking, broad file-access, or permission integration.
 
 ## Milestones
 
