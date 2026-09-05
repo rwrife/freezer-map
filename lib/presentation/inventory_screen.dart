@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:freezer_map/application/data_management.dart';
 import 'package:freezer_map/application/inventory_commands.dart';
+import 'package:freezer_map/application/reminders.dart';
 import 'package:freezer_map/domain/contracts.dart';
 import 'package:freezer_map/domain/entities.dart';
 import 'package:freezer_map/domain/value_objects.dart';
 import 'package:freezer_map/presentation/data_settings_screen.dart';
 import 'package:freezer_map/presentation/inventory_browser.dart';
+import 'package:freezer_map/presentation/reminder_dialog.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({
@@ -15,6 +19,7 @@ class InventoryScreen extends StatefulWidget {
     this.portability,
     this.documents,
     this.nowUtc,
+    this.reminders,
     super.key,
   });
 
@@ -23,12 +28,14 @@ class InventoryScreen extends StatefulWidget {
   final DataPortability? portability;
   final DocumentGateway? documents;
   final DateTime Function()? nowUtc;
+  final ReminderManager? reminders;
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
 }
 
-class _InventoryScreenState extends State<InventoryScreen> {
+class _InventoryScreenState extends State<InventoryScreen>
+    with WidgetsBindingObserver {
   bool _loading = true;
   Object? _error;
   List<Appliance> _appliances = const [];
@@ -36,11 +43,45 @@ class _InventoryScreenState extends State<InventoryScreen> {
   List<FreezerItem> _items = const [];
   ZoneId? _recentZoneId;
   Future<void> _itemMutationQueue = Future.value();
+  StreamSubscription<ReminderTapEvent>? _reminderTapSubscription;
+  String? _latestReminderNotice;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_listenForReminderTaps());
     _reload();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_reminderTapSubscription?.cancel());
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_reconcileReminders());
+    }
+  }
+
+  Future<void> _listenForReminderTaps() async {
+    final reminders = widget.reminders;
+    if (reminders == null) return;
+    _reminderTapSubscription ??= reminders.tapEvents().listen(
+      (event) => unawaited(_handleReminderTap(event)),
+    );
+    try {
+      await reminders.initialize();
+    } catch (error) {
+      unawaited(_reminderTapSubscription?.cancel());
+      _reminderTapSubscription = null;
+      if (!mounted) return;
+      _announceAndNotify('Reminder initialization failed: ${_message(error)}');
+    }
   }
 
   Future<void> _reload() async {
@@ -60,12 +101,31 @@ class _InventoryScreenState extends State<InventoryScreen> {
         _items = items;
         _loading = false;
       });
+      await _reconcileReminders();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = error;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _reconcileReminders() async {
+    final reminders = widget.reminders;
+    if (reminders == null) return;
+    try {
+      final result = await reminders.reconcileAll();
+      if (!mounted) return;
+      final warning = result.warnings.isEmpty ? null : result.warnings.first;
+      if (warning == null || warning == _latestReminderNotice) {
+        return;
+      }
+      _latestReminderNotice = warning;
+      _announceAndNotify(warning);
+    } catch (error) {
+      if (!mounted) return;
+      _announceAndNotify('Reminder sync failed: ${_message(error)}');
     }
   }
 
@@ -181,6 +241,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       onReturnToFrozen: _returnToFrozen,
       onEdit: (item) => _editItem(item),
       onArchive: _archiveItem,
+      onReminder: widget.reminders == null ? null : _configureReminder,
     );
   }
 
@@ -350,6 +411,57 @@ class _InventoryScreenState extends State<InventoryScreen> {
     await _queueItemChange(
       () => widget.commands.archiveItemWithUndo(item.id),
       '${item.name} archived.',
+    );
+  }
+
+  Future<void> _configureReminder(FreezerItem item) async {
+    final reminders = widget.reminders;
+    if (reminders == null) return;
+    try {
+      final existing = await reminders.reminderForItem(item.id);
+      if (!mounted) return;
+      final draft = await showDialog<ReminderDraft>(
+        context: context,
+        builder: (context) => ReminderDialog(
+          item: item,
+          nowLocal: (widget.nowUtc ?? () => DateTime.now().toUtc())().toLocal(),
+          initial: existing,
+        ),
+      );
+      if (draft == null) return;
+      final result = await reminders.saveReminder(
+        itemId: item.id,
+        scheduledForLocal: draft.scheduledForLocal,
+        privacyMode: draft.privacyMode,
+        isEnabled: draft.isEnabled,
+      );
+      if (!mounted) return;
+      _announceAndNotify(result.message);
+      await _reload();
+    } catch (error) {
+      if (!mounted) return;
+      _announceAndNotify('Reminder update failed: ${_message(error)}');
+    }
+  }
+
+  Future<void> _handleReminderTap(ReminderTapEvent event) async {
+    final item = await widget.repository.itemById(event.itemId);
+    if (!mounted) return;
+    if (item == null) {
+      _announceAndNotify(
+        'Reminder opened, but the item no longer exists in local inventory.',
+      );
+      return;
+    }
+    if (item.isArchived) {
+      _announceAndNotify(
+        'Reminder opened for archived item ${item.name}. Use the archived '
+        'filter to review it.',
+      );
+      return;
+    }
+    _announceAndNotify(
+      'Reminder opened for ${item.name}. If it moved, use search to locate it.',
     );
   }
 

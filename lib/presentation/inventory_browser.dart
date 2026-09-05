@@ -23,6 +23,7 @@ final class InventoryBrowser extends StatefulWidget {
     required this.onReturnToFrozen,
     required this.onEdit,
     required this.onArchive,
+    this.onReminder,
     super.key,
   });
 
@@ -39,6 +40,7 @@ final class InventoryBrowser extends StatefulWidget {
   final Future<void> Function(FreezerItem item) onReturnToFrozen;
   final Future<void> Function(FreezerItem item) onEdit;
   final Future<void> Function(FreezerItem item) onArchive;
+  final Future<void> Function(FreezerItem item)? onReminder;
 
   @override
   State<InventoryBrowser> createState() => _InventoryBrowserState();
@@ -369,6 +371,9 @@ final class _InventoryBrowserState extends State<InventoryBrowser> {
     onReturnToFrozen: () => widget.onReturnToFrozen(item),
     onEdit: () => widget.onEdit(item),
     onArchive: () => widget.onArchive(item),
+    onReminder: widget.onReminder == null
+        ? null
+        : () => widget.onReminder!(item),
   );
 
   Widget _dropdown<T>({
@@ -409,6 +414,7 @@ final class _InventoryItemCard extends StatelessWidget {
     required this.onReturnToFrozen,
     required this.onEdit,
     required this.onArchive,
+    this.onReminder,
   });
 
   final FreezerItem item;
@@ -421,6 +427,7 @@ final class _InventoryItemCard extends StatelessWidget {
   final VoidCallback onReturnToFrozen;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
+  final VoidCallback? onReminder;
 
   @override
   Widget build(BuildContext context) {
@@ -464,6 +471,13 @@ final class _InventoryItemCard extends StatelessWidget {
                       label: 'Edit',
                       onPressed: onEdit,
                     ),
+                    if (onReminder != null)
+                      _action(
+                        key: Key('item-reminder-${item.id.value}'),
+                        icon: Icons.notifications_outlined,
+                        label: 'Reminder',
+                        onPressed: onReminder!,
+                      ),
                     _action(
                       key: Key('item-decrement-${item.id.value}'),
                       icon: Icons.remove,
