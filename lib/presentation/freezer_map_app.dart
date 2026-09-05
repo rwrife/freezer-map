@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:freezer_map/application/data_management.dart';
 import 'package:freezer_map/application/inventory_commands.dart';
+import 'package:freezer_map/application/reminders.dart';
 import 'package:freezer_map/domain/contracts.dart';
 import 'package:freezer_map/presentation/empty_inventory_screen.dart';
 import 'package:freezer_map/presentation/inventory_screen.dart';
@@ -11,7 +12,8 @@ class FreezerMapApp extends StatelessWidget {
       clock = null,
       ids = null,
       portability = null,
-      documents = null;
+      documents = null,
+      reminders = null;
 
   const FreezerMapApp.inventory({
     required TransactionalInventoryRepository this.repository,
@@ -19,6 +21,7 @@ class FreezerMapApp extends StatelessWidget {
     required StableIdSource this.ids,
     this.portability,
     this.documents,
+    this.reminders,
     super.key,
   });
 
@@ -27,6 +30,7 @@ class FreezerMapApp extends StatelessWidget {
   final StableIdSource? ids;
   final DataPortability? portability;
   final DocumentGateway? documents;
+  final ReminderManager? reminders;
 
   static const appTitle = 'Freezer Map';
 
@@ -51,6 +55,7 @@ class FreezerMapApp extends StatelessWidget {
               portability: portability,
               documents: documents,
               nowUtc: clock!.nowUtc,
+              reminders: reminders,
             ),
     );
   }

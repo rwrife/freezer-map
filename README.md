@@ -3,9 +3,9 @@
 A local-first mobile app for households to map freezer contents by appliance and bin, track portions and frozen dates, surface use-first items, and export inventory without accounts.
 
 > **Status:** The Flutter foundation, app-private SQLite layer, primary
-> add/find/use/move/thaw workflow, and transactional backup/restore/export/delete
-> controls are implemented with automated tests. Reminders, release signing,
-> and store distribution are not implemented yet.
+> add/find/use/move/thaw workflow, transactional backup/restore/export/delete
+> controls, and optional local reminders are implemented with automated tests.
+> Release signing and store distribution are not implemented yet.
 
 ## Why
 
@@ -52,7 +52,7 @@ Freezer contents disappear behind drawers and stacked containers. Paper lists go
 
 Freezer Map is offline and local-first. Structured records live in an app-private SQLite database. Backups and exports are created only after an explicit user action using the platform document picker. The MVP requests no location, contacts, microphone, camera, health, Bluetooth, or background sensor permissions.
 
-Notification permission is requested only when the user enables reminders. Denial leaves all inventory, search, use-first, and export features intact. Notifications contain an item name only when the user opts in; a privacy setting can use generic reminder text instead.
+Notification permission is requested only when the user enables reminders. Denial leaves all inventory, search, use-first, and export features intact. Notifications contain an item name only when the user opts in; a privacy setting can use generic reminder text instead. Reminder schedules are reconciled from local data on startup and after restore so they remain deterministic across app restarts, timezone changes, and permission toggles.
 
 Exports can contain household inventory details, so the app warns before sharing and never uploads them itself. “Delete all data” requires confirmation and reports completion or failure. No analytics, advertising SDK, telemetry, or network service is planned for the MVP.
 
@@ -104,10 +104,13 @@ No signing material belongs in this repository.
 
 See [the backup format and restore contract](docs/backup-format.md),
 [architecture boundaries](docs/architecture.md), and the
-[toolchain/dependency license record](docs/dependencies.md). The current
-application uses Drift with SQLite for its app-private local store and
-`file_picker` for user-initiated scoped document choices. It has no analytics,
-advertising, account, networking, broad file-access, or permission integration.
+[toolchain/dependency license record](docs/dependencies.md), plus
+[reminder/accessibility verification scripts](docs/reminders-accessibility.md).
+The current
+application uses Drift with SQLite for its app-private local store,
+`file_picker` for user-initiated scoped document choices, and optional local
+notifications for user-enabled reminders. It has no analytics, advertising,
+account, networking, or broad file-access permission integration.
 
 ## Milestones
 

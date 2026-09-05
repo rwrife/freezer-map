@@ -2,11 +2,13 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:freezer_map/application/inventory_commands.dart';
+import 'package:freezer_map/application/reminders.dart';
 import 'package:freezer_map/data/app_database.dart';
 import 'package:freezer_map/data/data_portability.dart';
 import 'package:freezer_map/data/database.dart';
 import 'package:freezer_map/data/drift_inventory_repository.dart';
 import 'package:freezer_map/platform/document_gateway.dart';
+import 'package:freezer_map/platform/local_notifications_reminder_gateway.dart';
 import 'package:freezer_map/presentation/freezer_map_app.dart';
 
 Future<void> main() async {
@@ -35,6 +37,9 @@ class FreezerMapBootstrap extends StatefulWidget {
 
 class _FreezerMapBootstrapState extends State<FreezerMapBootstrap> {
   late final StableIdSource _ids;
+  final Clock _clock = const _SystemClock();
+  final ReminderNotificationGateway _reminderGateway =
+      LocalNotificationsReminderGateway();
   FreezerDatabase? _database;
   var _loading = true;
 
@@ -78,12 +83,19 @@ class _FreezerMapBootstrapState extends State<FreezerMapBootstrap> {
   Widget build(BuildContext context) {
     final database = _database;
     if (database != null) {
+      final repository = DriftInventoryRepository(database);
       return FreezerMapApp.inventory(
-        repository: DriftInventoryRepository(database),
-        clock: const _SystemClock(),
+        repository: repository,
+        clock: _clock,
         ids: _ids,
         portability: DataPortabilityService(database),
         documents: const FilePickerDocumentGateway(),
+        reminders: ReminderManager(
+          repository: repository,
+          clock: _clock,
+          ids: _ids,
+          gateway: _reminderGateway,
+        ),
       );
     }
     return MaterialApp(

@@ -28,8 +28,11 @@ device evidence; those remain separate CI/platform gates.
 | `decimal` | 3.2.6 | Exact, non-binary portion quantities | Apache-2.0 |
 | `drift` | 2.34.3 | Typed SQLite schema, queries, and transactions | MIT |
 | `file_picker` | 12.2.0 | User-initiated scoped platform open/save document pickers | MIT |
+| `flutter_local_notifications` | 17.2.4 | User-enabled local-only planning reminders | BSD-3-Clause |
+| `flutter_timezone` | 3.0.1 | Resolve local timezone name for deterministic reminder schedules | BSD-3-Clause |
 | `path` | 1.9.1 | Portable app-private database path joining | BSD 3-Clause |
 | `path_provider` | 2.1.6 | OS application-support directory lookup | BSD 3-Clause |
+| `timezone` | 0.9.4 | Timezone-safe local reminder scheduling | MIT |
 | `unorm_dart` | 0.3.2 | Unicode normalization for deterministic local search | MIT |
 | `build_runner` | 2.16.0 (development only) | Deterministic code-generation runner | BSD 3-Clause |
 | `drift_dev` | 2.34.5 (development only) | Drift schema/code generator | MIT |
@@ -39,8 +42,10 @@ Drift and its locked transitive `sqlite3` dependency provide the local database;
 `path_provider` selects the operating system's app-private support directory.
 `file_picker` delegates to the operating system's scoped document picker only
 after an explicit open/save action; it requests no broad filesystem permission.
-These packages add no account, analytics, advertising, telemetry, notification,
-or application network behavior. The native
+`flutter_local_notifications` schedules reminders on-device only and uses
+notification permission only when the user explicitly enables reminders.
+These packages add no account, analytics, advertising, telemetry, or
+application network behavior. The native
 SQLite library is resolved through Dart native assets; the obsolete
 `sqlite3_flutter_libs` package is intentionally not used. Later package
 additions must record purpose, version, license, privacy/permission impact, and
