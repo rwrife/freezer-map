@@ -29,7 +29,6 @@ device evidence; those remain separate CI/platform gates.
 | `drift` | 2.34.3 | Typed SQLite schema, queries, and transactions | MIT |
 | `file_picker` | 12.2.0 | User-initiated scoped platform open/save document pickers | MIT |
 | `flutter_local_notifications` | 17.2.4 | User-enabled local-only planning reminders | BSD-3-Clause |
-| `flutter_timezone` | 3.0.1 | Resolve local timezone name for deterministic reminder schedules | BSD-3-Clause |
 | `path` | 1.9.1 | Portable app-private database path joining | BSD 3-Clause |
 | `path_provider` | 2.1.6 | OS application-support directory lookup | BSD 3-Clause |
 | `timezone` | 0.9.4 | Timezone-safe local reminder scheduling | MIT |

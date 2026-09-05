@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:freezer_map/application/reminders.dart';
 import 'package:freezer_map/domain/value_objects.dart';
 import 'package:timezone/data/latest.dart' as tz;
@@ -128,8 +127,7 @@ final class LocalNotificationsReminderGateway
   @override
   Future<void> scheduleReminder(ReminderNotificationRequest request) async {
     await initialize();
-    await _setTimezone();
-    final schedule = tz.TZDateTime.from(request.scheduledForUtc, tz.local);
+    final schedule = tz.TZDateTime.from(request.scheduledForUtc, tz.UTC);
 
     await _plugin.zonedSchedule(
       _notificationId(request.reminderId),
@@ -165,7 +163,6 @@ final class LocalNotificationsReminderGateway
 
   Future<void> _initializeOnce() async {
     tz.initializeTimeZones();
-    await _setTimezone();
 
     await _plugin.initialize(
       const InitializationSettings(
@@ -189,15 +186,6 @@ final class LocalNotificationsReminderGateway
     final event = _eventFromPayload(launchResponse?.payload);
     if ((launchDetails?.didNotificationLaunchApp ?? false) && event != null) {
       _tapEvents.add(event);
-    }
-  }
-
-  Future<void> _setTimezone() async {
-    try {
-      final name = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(name));
-    } catch (_) {
-      // Keep timezone package fallback (UTC) if the local zone lookup fails.
     }
   }
 
