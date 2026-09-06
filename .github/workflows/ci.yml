@@ -39,13 +39,15 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
       - name: Verify architecture boundaries
         run: dart run tool/check_architecture.dart
+      - name: Verify offline privacy contract
+        run: dart run tool/check_release_readiness.dart
       - name: Analyze
         run: flutter analyze --fatal-infos --fatal-warnings
       - name: Test
         run: flutter test --coverage
 
   android:
-    name: Android debug build
+    name: Android release APK build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -64,11 +66,17 @@ jobs:
           cache: true
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
-      - name: Build debug APK (development signing only)
-        run: flutter build apk --debug
+      - name: Build release APK (unsigned/distribution unsigned state)
+        run: flutter build apk --release
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4
+        with:
+          name: freezer-map-android-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
 
   ios:
-    name: iOS simulator compile
+    name: iOS release compile (unsigned)
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -82,5 +90,72 @@ jobs:
           cache: true
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
-      - name: Compile for iOS simulator without signing
-        run: flutter build ios --simulator --no-codesign
+      - name: Compile release iOS build without signing
+        run: flutter build ios --release --no-codesign
+
+  release_assets:
+    name: Source archive, checksum, provenance
+    needs:
+      - quality
+      - android
+      - ios
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Generate source archive and checksum
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          TAG_OR_SHA="$(git rev-parse --short=12 HEAD)"
+          ARCHIVE="dist/freezer-map-${TAG_OR_SHA}.tar.gz"
+          CHECKSUM="dist/freezer-map-${TAG_OR_SHA}.sha256"
+          git archive --format=tar.gz --output="$ARCHIVE" HEAD
+          sha256sum "$ARCHIVE" > "$CHECKSUM"
+
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+
+          dist = Path("dist")
+          sha_file = sorted(dist.glob("*.sha256"))[0]
+          archive_file = sorted(dist.glob("*.tar.gz"))[0]
+          checksum_line = sha_file.read_text(encoding="utf-8").strip()
+          checksum_value = checksum_line.split()[0]
+
+          provenance = {
+              "generated_at_utc": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+              "commit": os.environ["GITHUB_SHA"],
+              "short_commit": archive_file.stem.split("-")[-1],
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "ref_name": os.environ["GITHUB_REF_NAME"],
+              "source_archive": archive_file.name,
+              "source_archive_sha256": checksum_value,
+              "binary_status": {
+                  "android_release_apk": "unsigned artifact (CI output)",
+                  "ios_release_build": "compile-only, unsigned, no archive signing",
+              },
+          }
+
+          (dist / "provenance.json").write_text(
+              json.dumps(provenance, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Upload release-candidate source assets
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4
+        with:
+          name: freezer-map-source-release-assets
+          path: dist/
+          if-no-files-found: error
