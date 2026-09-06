@@ -98,6 +98,8 @@ This host has no Android SDK or Xcode, so Android release and iOS release
 build evidence must come from CI artifacts/check logs on pull requests. These
 checks are not simulator launch evidence, signed archives, App Store builds, or
 physical-device test evidence.
+When those CI jobs pass, the `release_assets` job publishes source archive,
+checksum, and provenance artifacts for the same commit.
 
 The scaffold identifiers are deliberately non-production placeholders:
 

@@ -108,6 +108,8 @@ simulator/emulator checks.
 - Release notes are tracked in `CHANGELOG.md`.
 - Signing instructions remain secret-free and external to git.
   See `docs/signing-and-packaging.md`.
+- CI `release_assets` job runs only after quality + Android + iOS build jobs and
+  publishes source archive, checksum, and `provenance.json` artifacts.
 
 Suggested source provenance commands (run only after successful verification):
 
