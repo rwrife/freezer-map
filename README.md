@@ -4,8 +4,10 @@ A local-first mobile app for households to map freezer contents by appliance and
 
 > **Status:** The Flutter foundation, app-private SQLite layer, primary
 > add/find/use/move/thaw workflow, transactional backup/restore/export/delete
-> controls, and optional local reminders are implemented with automated tests.
-> Release signing and store distribution are not implemented yet.
+> controls, optional local reminders, and release-candidate checklist are
+> implemented with automated verification. Signing identities, App Store / Play
+> publishing, and physical-device accessibility evidence are intentionally
+> outside this repository and must be completed separately.
 
 ## Why
 
@@ -83,16 +85,19 @@ dart run build_runner build
 git diff --exit-code
 dart format --output=none --set-exit-if-changed .
 dart run tool/check_architecture.dart
+dart run tool/check_release_readiness.dart
 flutter analyze --fatal-infos --fatal-warnings
 flutter test --coverage
-flutter build apk --debug
+flutter build apk --release
+flutter build ios --release --no-codesign
 ```
 
 The Dart quality gates above were executed on Linux ARM64 using the official
 matching Dart SDK graft described in [the dependency record](docs/dependencies.md).
-This host has no Android SDK, so the Android debug build is verified in Linux
-CI. The unsigned iOS simulator-target compile runs in macOS CI; it is not a
-simulator launch, signed archive, App Store build, or physical-device test.
+This host has no Android SDK or Xcode, so Android release and iOS release
+build evidence must come from CI artifacts/check logs on pull requests. These
+checks are not simulator launch evidence, signed archives, App Store builds, or
+physical-device test evidence.
 
 The scaffold identifiers are deliberately non-production placeholders:
 
@@ -105,7 +110,9 @@ No signing material belongs in this repository.
 See [the backup format and restore contract](docs/backup-format.md),
 [architecture boundaries](docs/architecture.md), and the
 [toolchain/dependency license record](docs/dependencies.md), plus
-[reminder/accessibility verification scripts](docs/reminders-accessibility.md).
+[reminder/accessibility verification scripts](docs/reminders-accessibility.md),
+the [release candidate checklist](docs/release-candidate.md), and
+[secret-free signing/packaging guidance](docs/signing-and-packaging.md).
 The current
 application uses Drift with SQLite for its app-private local store,
 `file_picker` for user-initiated scoped document choices, and optional local
@@ -122,6 +129,18 @@ account, networking, or broad file-access permission integration.
 6. Platform builds, release checklist, and documented limitations
 
 See [PLAN.md](PLAN.md) for architecture and delivery order. Work is tracked in GitHub Issues.
+
+## Known issues and release-candidate limitations
+
+- Signing, notarization, TestFlight, Play upload, and store metadata publication
+  are external operations and are not performed from this repository.
+- Physical-device TalkBack/VoiceOver observations are required before a public
+  store release; CI and local widget tests do not replace that evidence.
+- Screenshots are not committed yet because this headless environment cannot
+  generate trustworthy device captures; add platform screenshots only from real
+  simulator/device runs tied to a release candidate build.
+- Linux-host verification cannot execute iOS build tooling directly; iOS release
+  compile evidence must come from the macOS CI job.
 
 ## Limits and responsible use
 

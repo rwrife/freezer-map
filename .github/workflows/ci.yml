@@ -39,13 +39,15 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
       - name: Verify architecture boundaries
         run: dart run tool/check_architecture.dart
+      - name: Verify offline privacy contract
+        run: dart run tool/check_release_readiness.dart
       - name: Analyze
         run: flutter analyze --fatal-infos --fatal-warnings
       - name: Test
         run: flutter test --coverage
 
   android:
-    name: Android debug build
+    name: Android release APK build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -64,11 +66,17 @@ jobs:
           cache: true
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
-      - name: Build debug APK (development signing only)
-        run: flutter build apk --debug
+      - name: Build release APK (unsigned/distribution unsigned state)
+        run: flutter build apk --release
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4
+        with:
+          name: freezer-map-android-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
 
   ios:
-    name: iOS simulator compile
+    name: iOS release compile (unsigned)
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -82,5 +90,5 @@ jobs:
           cache: true
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
-      - name: Compile for iOS simulator without signing
-        run: flutter build ios --simulator --no-codesign
+      - name: Compile release iOS build without signing
+        run: flutter build ios --release --no-codesign
