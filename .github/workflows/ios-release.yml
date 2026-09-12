@@ -13,11 +13,6 @@ on:
   push:
     tags:
       - 'v*'
-    # TEMPORARY: lets this workflow be exercised before it reaches the default
-    # branch, since workflow_dispatch only resolves against the default branch.
-    # Remove this branches: block before merging.
-    branches:
-      - ci/ios-app-store-publishing
 
 permissions:
   contents: read
