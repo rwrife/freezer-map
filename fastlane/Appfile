@@ -1,0 +1,9 @@
+# Fastlane lives at the Flutter project root, not under ios/, because the build is
+# driven by `flutter build` which must run from the project root.
+
+app_identifier("com.infinityball.freezermap")
+
+# Authentication is handled by `app_store_connect_api_key` in the Fastfile using the
+# ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 repository secrets, so no Apple ID,
+# team_id, or itc_team_id is configured here. The signing team comes from
+# DEVELOPMENT_TEAM in ios/Runner.xcodeproj/project.pbxproj.

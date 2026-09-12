@@ -1,0 +1,286 @@
+# Fastfile for Freezer Map.
+#
+# Lives at the repository root (not under ios/) because the lanes shell out to
+# `flutter build`, which must run from the Flutter project root.
+
+require "base64"
+require "fileutils"
+require "tmpdir"
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "com.infinityball.freezermap".freeze
+
+platform :ios do
+  desc "Build a signed release IPA and upload it to TestFlight."
+  lane :beta do
+    build = build_release_ipa
+
+    upload_to_testflight(
+      api_key: build[:api_key],
+      app_identifier: APP_IDENTIFIER,
+      ipa: build[:ipa],
+      skip_waiting_for_build_processing: true
+    )
+
+    UI.success("Uploaded #{build[:build_name]} (#{build[:build_number]}) to TestFlight.")
+  end
+
+  desc "Build a signed release IPA, upload it, and submit it for App Store review."
+  lane :release do
+    build = build_release_ipa
+
+    upload_to_app_store(
+      api_key: build[:api_key],
+      app_identifier: APP_IDENTIFIER,
+      ipa: build[:ipa],
+      app_version: build[:build_name],
+      submit_for_review: true,
+      automatic_release: true,
+      force: true,
+      skip_metadata: true,
+      skip_screenshots: true,
+      run_precheck_before_submit: false,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: false
+      }
+    )
+
+    UI.success("Submitted #{build[:build_name]} (#{build[:build_number]}) for App Store review.")
+  end
+
+  # Shared build step for both lanes.
+  #
+  # The build number comes from App Store Connect and is passed to Flutter on the
+  # command line rather than written into the Xcode project. Info.plist takes
+  # CFBundleShortVersionString/CFBundleVersion from $(FLUTTER_BUILD_NAME) and
+  # $(FLUTTER_BUILD_NUMBER), which `flutter build` regenerates on every build, so
+  # `increment_build_number` would be overwritten and silently ineffective.
+  private_lane :build_release_ipa do
+    api_key = app_store_connect_api_key(
+      key_id: required_env("ASC_KEY_ID"),
+      issuer_id: required_env("ASC_ISSUER_ID"),
+      key_content: app_store_api_key_base64,
+      is_key_content_base64: true,
+      in_house: false
+    )
+
+    setup_ci
+
+    build_number = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      initial_build_number: 0
+    ).to_i + 1
+
+    build_name = flutter_build_name
+
+    UI.message("Building #{APP_IDENTIFIER} #{build_name} (#{build_number}) for team #{development_team}")
+
+    # `sh` runs from the fastlane/ directory, so each command is anchored to the
+    # project root explicitly.
+    sh("cd \"#{project_root}\" && flutter pub get --enforce-lockfile")
+
+    # `flutter build ipa` archives and exports in one step and forwards neither
+    # -allowProvisioningUpdates nor -authenticationKey* to xcodebuild. On a runner
+    # with no Apple account that fails twice over: the archive cannot fetch a
+    # provisioning profile ("No Accounts"), and the export cannot fetch the
+    # distribution certificate ("No signing certificate \"iOS Distribution\" found").
+    # Flutter still builds the app and owns the version through Generated.xcconfig;
+    # the two signing steps are driven directly so the API key reaches them and Xcode
+    # can provision against App Store Connect.
+    with_xcode_signing_credentials do
+      sh("cd \"#{project_root}\" && flutter build ios --release --no-codesign " \
+         "--build-name=#{build_name} --build-number=#{build_number}")
+
+      archive = File.join(signing_workdir, "Runner.xcarchive")
+      sh("cd \"#{project_root}\" && xcodebuild " \
+         "-workspace ios/Runner.xcworkspace -scheme Runner -configuration Release " \
+         "-destination generic/platform=iOS " \
+         "-archivePath \"#{archive}\" " \
+         "#{xcodebuild_auth_flags} archive")
+
+      FileUtils.rm_rf(ipa_output_dir)
+      FileUtils.mkdir_p(ipa_output_dir)
+      sh("cd \"#{project_root}\" && xcodebuild -exportArchive " \
+         "-archivePath \"#{archive}\" " \
+         "-exportPath \"#{ipa_output_dir}\" " \
+         "-exportOptionsPlist \"#{write_export_options}\" " \
+         "#{xcodebuild_auth_flags}")
+    end
+
+    {
+      api_key: api_key,
+      ipa: locate_ipa,
+      build_name: build_name,
+      build_number: build_number
+    }
+  end
+end
+
+# --- helpers ----------------------------------------------------------------
+
+# Absolute path to the Flutter project root (the parent of this fastlane/ folder).
+def project_root
+  @project_root ||= begin
+    folder = FastlaneCore::FastlaneFolder.path
+    root = folder ? File.expand_path("..", folder) : Dir.pwd
+    unless File.exist?(File.join(root, "pubspec.yaml"))
+      UI.user_error!("No pubspec.yaml in #{root}; fastlane/ must sit at the Flutter project root.")
+    end
+    root
+  end
+end
+
+# The Xcode project is the single source of truth for the team, so the export
+# options cannot drift away from what the archive was actually signed with.
+def development_team
+  @development_team ||= begin
+    pbxproj = File.join(project_root, "ios", "Runner.xcodeproj", "project.pbxproj")
+    teams = File.read(pbxproj).scan(/DEVELOPMENT_TEAM = ([A-Z0-9]+);/).flatten.uniq
+    if teams.empty?
+      UI.user_error!("No DEVELOPMENT_TEAM in #{pbxproj}; automatic signing cannot work without one.")
+    elsif teams.length > 1
+      UI.user_error!("#{pbxproj} sets conflicting DEVELOPMENT_TEAM values: #{teams.join(', ')}")
+    end
+    teams.first
+  end
+end
+
+# ASC_KEY_P8 may hold either the .p8 file's contents verbatim or its base64; both
+# are easy to produce by hand, and telling them apart here is cheaper than getting
+# it wrong. Passing a verbatim PEM to `app_store_connect_api_key` with
+# is_key_content_base64 set makes Base64.decode64 fold the "-----BEGIN PRIVATE
+# KEY-----" header into the body (those characters are all in the base64 alphabet),
+# yielding binary that fails deep inside OpenSSL as "string contains null byte".
+# Whatever comes in, a clean base64 PEM goes out. No key material is ever logged.
+def app_store_api_key_base64
+  Base64.strict_encode64(app_store_api_key_pem)
+end
+
+def app_store_api_key_pem
+  return @app_store_api_key_pem if @app_store_api_key_pem
+
+  raw = required_env("ASC_KEY_P8").strip
+  pem = raw.start_with?("-----BEGIN") ? raw : Base64.decode64(raw)
+
+  # A .p8 captured through PowerShell's default UTF-16 output decodes to text with
+  # a NUL between every character. Recover it rather than failing on a text-encoding
+  # quirk that has nothing to do with the key itself.
+  if pem.include?("\x00")
+    UI.important("ASC_KEY_P8 decoded to UTF-16 text; converting to UTF-8.")
+    pem = begin
+      pem.dup.force_encoding(Encoding::UTF_16LE).encode(Encoding::UTF_8)
+    rescue EncodingError
+      pem.delete("\x00")
+    end
+  end
+  pem = pem.dup.force_encoding(Encoding::UTF_8).delete("﻿").delete("\r").strip
+
+  unless pem.start_with?("-----BEGIN") && pem.include?("PRIVATE KEY")
+    UI.user_error!(
+      "ASC_KEY_P8 is not a PEM private key (#{pem.bytesize} bytes after decoding). " \
+      "Set it to either the .p8 file's contents verbatim, or its base64 built from " \
+      "the raw file bytes."
+    )
+  end
+
+  UI.message("ASC_KEY_P8 -> #{pem.bytesize} bytes, #{pem.lines.first.strip}")
+  @app_store_api_key_pem = pem
+end
+
+# Writes the .p8 to a private temporary directory for the duration of the block so
+# xcodebuild can authenticate with -authenticationKeyPath, then removes it. The key
+# never lands anywhere tracked; *.p8 is gitignored as a second line of defence.
+def with_xcode_signing_credentials
+  @signing_workdir = Dir.mktmpdir("asc-signing")
+  @api_key_file = File.join(@signing_workdir, "AuthKey_#{required_env('ASC_KEY_ID')}.p8")
+  File.write(@api_key_file, app_store_api_key_pem)
+  File.chmod(0o600, @api_key_file)
+  yield
+ensure
+  FileUtils.rm_rf(@signing_workdir) if @signing_workdir
+  @signing_workdir = nil
+  @api_key_file = nil
+end
+
+# Credentials for xcodebuild's automatic (cloud) signing. The key id and issuer id
+# are passed as shell references so their values never appear in the logged command.
+def xcodebuild_auth_flags
+  "-allowProvisioningUpdates " \
+    "-authenticationKeyPath \"#{api_key_file}\" " \
+    '-authenticationKeyID "$ASC_KEY_ID" ' \
+    '-authenticationKeyIssuerID "$ASC_ISSUER_ID"'
+end
+
+def signing_workdir
+  @signing_workdir || UI.user_error!("signing_workdir used outside with_xcode_signing_credentials")
+end
+
+def api_key_file
+  @api_key_file || UI.user_error!("api_key_file used outside with_xcode_signing_credentials")
+end
+
+# Where `flutter build ipa` would have put the IPA, so the artifact upload and the
+# rest of the lane are unaffected by driving the export ourselves.
+def ipa_output_dir
+  File.join(project_root, "build", "ios", "ipa")
+end
+
+def write_export_options
+  path = File.join(signing_workdir, "ExportOptions.plist")
+  File.write(path, <<~PLIST)
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+    \t<key>destination</key>
+    \t<string>export</string>
+    \t<key>method</key>
+    \t<string>app-store-connect</string>
+    \t<key>signingStyle</key>
+    \t<string>automatic</string>
+    \t<key>teamID</key>
+    \t<string>#{development_team}</string>
+    \t<key>uploadSymbols</key>
+    \t<true/>
+    </dict>
+    </plist>
+  PLIST
+  path
+end
+
+# pubspec versions carry an optional build number after "+" and an optional
+# prerelease label after "-". App Store Connect accepts only one to three
+# dot-separated integers as CFBundleShortVersionString, and takes the build number
+# separately, so "0.1.0-rc.1+7" ships as marketing version "0.1.0".
+def flutter_build_name
+  pubspec = File.read(File.join(project_root, "pubspec.yaml"))
+  raw = pubspec[/^version:\s*(\S+)/, 1]
+  UI.user_error!("Could not read `version:` from pubspec.yaml.") if raw.nil?
+
+  name = raw.split("+").first.split("-").first
+  UI.important("pubspec version #{raw} -> App Store version #{name}") if name != raw
+
+  unless name.match?(/\A\d+(\.\d+){0,2}\z/)
+    UI.user_error!(
+      "#{name.inspect} (from pubspec version #{raw.inspect}) is not a valid App Store " \
+      "version; it must be one to three dot-separated integers."
+    )
+  end
+  name
+end
+
+# Flutter names the IPA after the Xcode scheme, so glob rather than guess.
+def locate_ipa
+  candidates = Dir.glob(File.join(ipa_output_dir, "*.ipa"))
+  UI.user_error!("No .ipa found in build/ios/ipa.") if candidates.empty?
+  candidates.max_by { |path| File.mtime(path) }
+end
+
+def required_env(name)
+  value = ENV[name]
+  UI.user_error!("Missing required environment variable #{name}.") if value.nil? || value.strip.empty?
+  value
+end

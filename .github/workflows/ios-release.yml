@@ -1,0 +1,81 @@
+name: iOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: Fastlane lane to run
+        type: choice
+        default: beta
+        options:
+          - beta
+          - release
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+# Never cancel an in-flight run: it may already be uploading a binary to
+# App Store Connect.
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish to App Store Connect
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      # Tag pushes carry no inputs, so they fall through to the beta lane.
+      LANE: ${{ inputs.lane || 'beta' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install pinned Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - name: Select Xcode
+        run: |
+          echo "Xcode versions on this image:"
+          ls -d /Applications/Xcode*.app
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          [ -n "$latest" ] || latest=/Applications/Xcode.app
+          sudo xcode-select --switch "$latest/Contents/Developer"
+          major="$(xcodebuild -version | head -1 | cut -d' ' -f2 | cut -d. -f1)"
+          if [ "$major" -lt 26 ]; then
+            echo "::error::App Store Connect rejects builds made with anything older than the iOS 26 SDK, and the newest Xcode on this runner is $major. Move the job to a newer runner image."
+            exit 1
+          fi
+      - name: Toolchain versions
+        run: |
+          echo "lane: $LANE"
+          flutter --version
+          dart --version
+          xcodebuild -version
+          fastlane --version
+      - name: Run fastlane
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: fastlane ios "$LANE"
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4
+        if: always()
+        with:
+          name: freezer-map-ios-${{ github.run_id }}
+          path: |
+            build/ios/ipa/*.ipa
+            fastlane/report.xml
+          if-no-files-found: warn
+          retention-days: 14
