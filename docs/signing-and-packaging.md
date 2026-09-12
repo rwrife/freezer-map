@@ -28,27 +28,55 @@ flutter build apk --release
 4. If signed APK/AAB is required, inject signing values only in private build
    contexts (never committed files).
 
-## iOS signing (local macOS)
+## iOS signing (automated, no local macOS required)
 
-1. Open `ios/Runner.xcworkspace` in Xcode on a trusted macOS host.
-2. Configure Team, Bundle Identifier, and Provisioning Profile.
-3. Keep certificates/profiles in Apple-managed secure keychain contexts.
-4. Verify compile without signing in CI:
+Signed builds are produced by the `iOS Release` workflow
+(`.github/workflows/ios-release.yml`), which runs the fastlane lanes at the
+repository root. No certificate or profile is stored anywhere — Xcode provisions
+them from App Store Connect at build time using an API key, and Apple keeps the
+private key for the resulting cloud-managed certificate.
+
+1. The bundle identifier (`com.infinityball.freezermap`) and `DEVELOPMENT_TEAM`
+   live in `ios/Runner.xcodeproj/project.pbxproj`, with
+   `CODE_SIGN_STYLE = Automatic`. The Release configuration deliberately pins no
+   `CODE_SIGN_IDENTITY`: under automatic signing Xcode signs the archive for
+   development and re-signs for distribution at export, and naming an identity
+   conflicts with that.
+2. Three repository secrets authenticate to App Store Connect: `ASC_KEY_ID`,
+   `ASC_ISSUER_ID`, and `ASC_KEY_P8` (the `.p8` contents, or their base64). The
+   key must hold the **Admin** role — a Developer-role key can create development
+   certificates but not distribution ones, which surfaces at export as
+   `Cloud signing permission error`.
+3. Run it from the Actions tab, or:
+
+```bash
+gh workflow run ios-release.yml -f lane=beta      # TestFlight
+gh workflow run ios-release.yml -f lane=release   # TestFlight + submit for review
+```
+
+   Pushing a `v*` tag runs the `beta` lane.
+
+4. Verify a compile without signing (this also runs on every PR):
 
 ```bash
 flutter build ios --release --no-codesign
 ```
 
-5. Produce signed archives only from controlled release hosts after the release
-   checklist passes.
+The lanes take the build number from App Store Connect
+(`latest_testflight_build_number + 1`) and the marketing version from
+`pubspec.yaml`, reduced to the dot-separated integers App Store Connect accepts
+(`0.1.0-rc.1+7` ships as `0.1.0`). Nothing is written back into the Xcode
+project, because Flutter regenerates `$(FLUTTER_BUILD_NAME)` and
+`$(FLUTTER_BUILD_NUMBER)` on every build.
 
 ## Packaging guidance
 
 - **Sideload/testing (Android):** use CI-produced release APK artifacts.
 - **Store distribution (Android):** publish signed AAB/APK from secure release
   pipeline only.
-- **Store distribution (iOS):** publish signed archive via TestFlight/App Store
-  Connect from Xcode/Fastlane release automation.
+- **Store distribution (iOS):** run the `iOS Release` workflow; it archives,
+  exports, and uploads to TestFlight (or submits for review) without a local
+  macOS host.
 
 ## Provenance and release assets
 

@@ -54,3 +54,13 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Signing material
+*.p8
+*.p12
+*.mobileprovision
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/

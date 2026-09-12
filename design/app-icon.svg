@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background Space Gradient -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    
+    <!-- Icy Map Pin Gradient -->
+    <linearGradient id="pinGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E0F2FE" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+
+    <!-- Depth Shadows -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    
+    <!-- Frosty Glow for Snowflake -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#38BDF8" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Base Background -->
+  <rect width="1024" height="1024" fill="url(#bg)" />
+
+  <!-- Freezer Compartment Grid / Zones -->
+  <g opacity="0.6">
+    <rect x="112" y="112" width="360" height="360" rx="48" fill="#1E3A8A" />
+    <rect x="552" y="112" width="360" height="360" rx="48" fill="#1E3A8A" />
+    <rect x="112" y="552" width="360" height="360" rx="48" fill="#1E3A8A" />
+    <rect x="552" y="552" width="360" height="360" rx="48" fill="#1E40AF" />
+  </g>
+
+  <!-- The Map Pin Overlay -->
+  <g filter="url(#shadow)">
+    <!-- Pin Body -->
+    <path d="M512,180 C340,180 200,320 200,490 C200,700 512,940 512,940 C512,940 824,700 824,490 C824,320 684,180 512,180 Z" fill="url(#pinGrad)" />
+    
+    <!-- Pin Core / Cutout -->
+    <circle cx="512" cy="460" r="150" fill="#0F172A" />
+    
+    <!-- Inner Snowflake -->
+    <g stroke="#38BDF8" stroke-width="24" stroke-linecap="round" filter="url(#glow)">
+      <!-- Vertical -->
+      <path d="M512 340 L512 580" />
+      <!-- Diagonal Left-to-Right -->
+      <path d="M408 400 L616 520" />
+      <!-- Diagonal Right-to-Left -->
+      <path d="M408 520 L616 400" />
+    </g>
+  </g>
+</svg>
