@@ -89,7 +89,7 @@ void main() {
     expect(find.text('Berries'), findsNothing);
     expect(find.text('Soup'), findsOneWidget);
 
-    await tester.tap(find.text('Use First'));
+    await tester.tap(find.text('Use'));
     await tester.pumpAndSettle();
     expect(find.textContaining('not a food-safety'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -700));
@@ -141,7 +141,7 @@ void main() {
     await tester.tap(thaw);
     await tester.pumpAndSettle();
     expect((await repository.itemById(item.id))!.thawState, ThawState.thawing);
-    await tester.tap(find.text('Thaw Queue'));
+    await tester.tap(find.text('Thaw'));
     await tester.pumpAndSettle();
     expect(find.text('Soup'), findsOneWidget);
     expect(find.textContaining('not safe-thaw guidance'), findsOneWidget);

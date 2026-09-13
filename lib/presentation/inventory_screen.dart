@@ -1087,15 +1087,47 @@ class _ItemDialogState extends State<_ItemDialog> {
   final _form = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _quantity;
-  late final TextEditingController _unit;
-  late final TextEditingController _category;
-  late final TextEditingController _frozenOn;
+  late final TextEditingController _otherUnit;
+  late final TextEditingController _otherCategory;
   late final TextEditingController _useFirstOn;
   late final TextEditingController _notes;
+  String _unit = _commonUnits.first;
+  String _categoryChoice = _commonCategories.first;
+  DateTime? _frozenOnDate = DateTime.now();
   ZoneId? _zoneId;
   String? _locationError;
   String? _saveError;
   bool _saving = false;
+
+  static const List<String> _commonUnits = [
+    'portions',
+    'bags',
+    'boxes',
+    'bottles',
+    'containers',
+    'jars',
+    'pieces',
+    'packages',
+    'slices',
+    'trays',
+    'tubs',
+    'units',
+  ];
+
+  static const List<String> _commonCategories = [
+    'Meals',
+    'Vegetables',
+    'Fruit',
+    'Meat',
+    'Seafood',
+    'Bread',
+    'Dessert',
+    'Sauces',
+    'Soup',
+    'Snacks',
+  ];
+
+  static const String _otherOption = 'Other';
 
   @override
   void initState() {
@@ -1103,11 +1135,30 @@ class _ItemDialogState extends State<_ItemDialog> {
     final item = widget.item;
     _name = TextEditingController(text: item?.name);
     _quantity = TextEditingController(text: item?.quantity.canonical);
-    _unit = TextEditingController(text: item?.unit.value ?? 'portions');
-    _category = TextEditingController(text: item?.category);
-    _frozenOn = TextEditingController(text: _date(item?.frozenOn.value));
     _useFirstOn = TextEditingController(text: _date(item?.useFirstOn.value));
     _notes = TextEditingController(text: item?.notes);
+    _otherUnit = TextEditingController();
+    _otherCategory = TextEditingController();
+    if (item != null) {
+      if (!_commonUnits.contains(item.unit.value)) {
+        _unit = _otherOption;
+        _otherUnit.text = item.unit.value;
+      } else {
+        _unit = item.unit.value;
+      }
+      if (item.category.isNotEmpty &&
+          !_commonCategories.contains(item.category)) {
+        _categoryChoice = _otherOption;
+        _otherCategory.text = item.category;
+      } else if (item.category.isNotEmpty) {
+        _categoryChoice = item.category;
+      }
+      if (item.frozenOn.isKnown) {
+        _frozenOnDate = item.frozenOn.value!;
+      } else {
+        _frozenOnDate = null;
+      }
+    }
     _zoneId = item?.zoneId;
   }
 
@@ -1122,9 +1173,8 @@ class _ItemDialogState extends State<_ItemDialog> {
     for (final controller in [
       _name,
       _quantity,
-      _unit,
-      _category,
-      _frozenOn,
+      _otherUnit,
+      _otherCategory,
       _useFirstOn,
       _notes,
     ]) {
@@ -1165,6 +1215,28 @@ class _ItemDialogState extends State<_ItemDialog> {
         : PlanningDate.known(DateTime.parse(value));
   }
 
+  Future<void> _pickFrozenOn() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _frozenOnDate ?? now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      helpText: 'Frozen on (planning date)',
+    );
+    if (picked != null) setState(() => _frozenOnDate = picked);
+  }
+
+  String get _resolvedUnit {
+    final other = _otherUnit.text.trim();
+    return _unit == _otherOption ? other : _unit;
+  }
+
+  String get _resolvedCategory {
+    final other = _otherCategory.text.trim();
+    return _categoryChoice == _otherOption ? other : _categoryChoice;
+  }
+
   @override
   Widget build(BuildContext context) {
     final recent = widget.recentZoneId;
@@ -1195,17 +1267,56 @@ class _ItemDialogState extends State<_ItemDialog> {
                   ),
                   textInputAction: TextInputAction.next,
                 ),
-                TextFormField(
-                  controller: _unit,
+                DropdownButtonFormField<String>(
+                  key: const Key('item-unit'),
+                  initialValue: _unit,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Unit'),
-                  validator: _required,
-                  textInputAction: TextInputAction.next,
+                  items: [
+                    for (final unit in <String>[..._commonUnits, _otherOption])
+                      DropdownMenuItem(value: unit, child: Text(unit)),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _unit = value ?? _commonUnits.first),
                 ),
-                TextFormField(
-                  controller: _category,
+                if (_unit == _otherOption) ...[
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    key: const Key('item-other-unit'),
+                    controller: _otherUnit,
+                    decoration: const InputDecoration(labelText: 'Unit name'),
+                    validator: _required,
+                    textInputAction: TextInputAction.next,
+                  ),
+                ],
+                DropdownButtonFormField<String>(
+                  key: const Key('item-category'),
+                  initialValue: _categoryChoice,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Category'),
-                  textInputAction: TextInputAction.next,
+                  items: [
+                    for (final category in <String>[
+                      ..._commonCategories,
+                      _otherOption,
+                    ])
+                      DropdownMenuItem(value: category, child: Text(category)),
+                  ],
+                  onChanged: (value) => setState(
+                    () => _categoryChoice = value ?? _commonCategories.first,
+                  ),
                 ),
+                if (_categoryChoice == _otherOption) ...[
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    key: const Key('item-other-category'),
+                    controller: _otherCategory,
+                    decoration: const InputDecoration(
+                      labelText: 'Category name',
+                    ),
+                    validator: _required,
+                    textInputAction: TextInputAction.next,
+                  ),
+                ],
                 DropdownButtonFormField<ZoneId>(
                   initialValue: _zoneId,
                   isExpanded: true,
@@ -1243,15 +1354,12 @@ class _ItemDialogState extends State<_ItemDialog> {
                       }),
                     ),
                   ),
-                TextFormField(
-                  controller: _frozenOn,
-                  decoration: const InputDecoration(
-                    labelText: 'Frozen on',
-                    hintText: 'YYYY-MM-DD or unknown',
-                    helperText: 'Planning metadata only',
-                  ),
-                  validator: (value) => _planningDate(value, optional: false),
-                  textInputAction: TextInputAction.next,
+                _DatePickerField(
+                  key: const Key('item-frozen-on'),
+                  label: 'Frozen on',
+                  value: _frozenOnDate,
+                  onPick: _pickFrozenOn,
+                  onClear: () => setState(() => _frozenOnDate = null),
                 ),
                 TextFormField(
                   controller: _useFirstOn,
@@ -1310,11 +1418,13 @@ class _ItemDialogState extends State<_ItemDialog> {
       if (item == null) {
         await widget.commands.createItem(
           name: _name.text,
-          category: _category.text,
+          category: _resolvedCategory,
           zoneId: _zoneId!,
           quantity: PortionQuantity.parse(_quantity.text),
-          unit: PortionUnit(_unit.text),
-          frozenOn: _parseDate(_frozenOn.text),
+          unit: PortionUnit(_resolvedUnit),
+          frozenOn: _frozenOnDate == null
+              ? const PlanningDate.unknown()
+              : PlanningDate.known(_frozenOnDate!),
           useFirstOn: _parseDate(_useFirstOn.text),
           notes: _notes.text,
         );
@@ -1322,10 +1432,12 @@ class _ItemDialogState extends State<_ItemDialog> {
         change = await widget.commands.editItemWithUndo(
           item.id,
           name: _name.text,
-          category: _category.text,
+          category: _resolvedCategory,
           quantity: PortionQuantity.parse(_quantity.text),
-          unit: PortionUnit(_unit.text),
-          frozenOn: _parseDate(_frozenOn.text),
+          unit: PortionUnit(_resolvedUnit),
+          frozenOn: _frozenOnDate == null
+              ? const PlanningDate.unknown()
+              : PlanningDate.known(_frozenOnDate!),
           useFirstOn: _parseDate(_useFirstOn.text),
           notes: _notes.text,
           zoneId: _zoneId!,
@@ -1343,6 +1455,58 @@ class _ItemDialogState extends State<_ItemDialog> {
       }
     }
   }
+}
+
+/// Read-only button that shows the selected planning date and opens the
+/// platform-native Flutter date picker when tapped.
+class _DatePickerField extends StatelessWidget {
+  const _DatePickerField({
+    required this.label,
+    required this.value,
+    required this.onPick,
+    this.onClear,
+    super.key,
+  });
+
+  final String label;
+  final DateTime? value;
+  final Future<void> Function() onPick;
+  final VoidCallback? onClear;
+
+  static String _iso(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onPick,
+    child: InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: 'Defaults to today; planning metadata only',
+        border: const OutlineInputBorder(),
+        suffixIcon: value == null
+            ? const Icon(Icons.calendar_month_outlined)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    key: const Key('date-field-clear'),
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Clear date (unknown)',
+                    onPressed: onClear,
+                  ),
+                  const Icon(Icons.calendar_month_outlined),
+                ],
+              ),
+      ),
+      child: Text(
+        value == null ? 'Unknown' : _iso(value!),
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+    ),
+  );
 }
 
 class _SetupDialog extends StatefulWidget {

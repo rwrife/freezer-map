@@ -337,22 +337,22 @@ void main() {
       find.widgetWithText(TextFormField, 'Quantity'),
       '2.5',
     );
-    await tester.enterText(find.widgetWithText(TextFormField, 'Unit'), 'tubs');
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Category'),
-      'Meals',
-    );
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('item-unit')),
+        )
+        .onChanged!('tubs');
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('item-category')),
+        )
+        .onChanged!('Meals');
     final locationField = tester.widget<DropdownButtonFormField<ZoneId>>(
       find.byWidgetPredicate(
         (widget) => widget is DropdownButtonFormField<ZoneId>,
       ),
     );
     locationField.onChanged!(drawer.id);
-    await tester.pump();
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Frozen on'),
-      '2026-08-30',
-    );
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Use first on'),
       '2026-09-15',
@@ -368,7 +368,12 @@ void main() {
     final item = (await repository.items()).single;
     expect(item.quantity.canonical, '2.5');
     expect(item.unit.value, 'tubs');
-    expect(item.frozenOn.value, DateTime.utc(2026, 8, 30));
+    expect(item.category, 'Meals');
+    final today = DateTime.now();
+    expect(
+      item.frozenOn.value,
+      DateTime.utc(today.year, today.month, today.day),
+    );
     expect(item.useFirstOn.value, DateTime.utc(2026, 9, 15));
     expect(item.notes, 'Lunch');
 
@@ -376,9 +381,24 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'Stew');
     await tester.enterText(find.widgetWithText(TextFormField, 'Quantity'), '4');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Unit'), 'bags');
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('item-unit')),
+        )
+        .onChanged!('Other');
+    await tester.pump();
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Category'),
+      find.widgetWithText(TextFormField, 'Unit name'),
+      'bags',
+    );
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('item-category')),
+        )
+        .onChanged!('Other');
+    await tester.pump();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Category name'),
       'Dinner',
     );
     tester
@@ -388,10 +408,6 @@ void main() {
           ),
         )
         .onChanged!(shelf.id);
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Frozen on'),
-      '2026-08-31',
-    );
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Use first on'),
       '2026-10-01',
@@ -412,7 +428,10 @@ void main() {
     expect(edited.unit.value, 'bags');
     expect(edited.category, 'Dinner');
     expect(edited.zoneId, shelf.id);
-    expect(edited.frozenOn.value, DateTime.utc(2026, 8, 31));
+    expect(
+      edited.frozenOn.value,
+      DateTime.utc(today.year, today.month, today.day),
+    );
     expect(edited.useFirstOn.value, DateTime.utc(2026, 10, 1));
     expect(edited.notes, 'Dinner');
     expect((await repository.eventsFor(item.id)).map((event) => event.action), [
@@ -420,6 +439,67 @@ void main() {
       InventoryAction.edit,
     ]);
   });
+
+  testWidgets(
+    'short tab labels fit and the frozen-on picker defaults to today',
+    (tester) async {
+      final commands = InventoryCommands(
+        repository: repository,
+        clock: _Clock(),
+        ids: _Ids(),
+      );
+      final appliance = await commands.createAppliance(
+        name: 'Kitchen',
+        sortOrder: 0,
+      );
+      await commands.createZone(
+        applianceId: appliance.id,
+        name: 'Drawer',
+        sortOrder: 0,
+      );
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Use'), findsWidgets);
+      expect(find.text('Thaw'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Add freezer item'));
+      await tester.pumpAndSettle();
+      final today = DateTime.now();
+      final iso =
+          '${today.year.toString().padLeft(4, '0')}-'
+          '${today.month.toString().padLeft(2, '0')}-'
+          '${today.day.toString().padLeft(2, '0')}';
+      expect(find.text(iso), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const Key('item-frozen-on')));
+      await tester.pumpAndSettle();
+      final fieldRect = tester.getRect(
+        find.descendant(
+          of: find.byKey(const Key('item-frozen-on')),
+          matching: find.text(iso),
+        ),
+      );
+      await tester.tapAt(fieldRect.center);
+      await tester.pumpAndSettle();
+      expect(find.byType(CalendarDatePicker), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CalendarDatePicker), findsNothing);
+      expect(find.text(iso), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('date-field-clear')));
+      await tester.pumpAndSettle();
+      expect(find.text('Unknown'), findsOneWidget);
+    },
+  );
 
   testWidgets('inventory is reloaded from the repository after app restart', (
     tester,

@@ -89,12 +89,12 @@ final class _InventoryBrowserState extends State<InventoryBrowser> {
               ButtonSegment(
                 value: InventoryView.useFirst,
                 icon: Icon(Icons.event_outlined),
-                label: Text('Use First'),
+                label: Text('Use'),
               ),
               ButtonSegment(
                 value: InventoryView.thawQueue,
                 icon: Icon(Icons.ac_unit_outlined),
-                label: Text('Thaw Queue'),
+                label: Text('Thaw'),
               ),
             ],
             selected: {_view},
