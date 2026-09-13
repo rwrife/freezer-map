@@ -32,8 +32,8 @@ scripts, and verification evidence for issue #6.
 ### TalkBack (Android)
 
 1. Enable TalkBack in Android accessibility settings.
-2. Launch Freezer Map and move focus through Inventory, Use First, and Thaw
-   Queue tabs.
+2. Launch Freezer Map and move focus through the Inventory, Use, and Thaw
+   tabs.
 3. Verify item cards speak item name, quantity+unit, breadcrumb location, and
    explicit state text (Frozen/Thawing/Archived).
 4. Open an item reminder dialog and verify:
