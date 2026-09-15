@@ -29,6 +29,16 @@ Freezer contents disappear behind drawers and stacked containers. Paper lists go
 5. **Plan what to use:** review deterministic “use first” groups based on user-entered dates and a separate thaw queue.
 6. **Own the data:** export versioned JSON for backup/restore and flat CSV for inspection or spreadsheet use; delete all local data from Settings.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/iphone-6.5-inventory.png" alt="Freezer Map inventory on a 6.5-inch iPhone simulator" width="260"></td>
+    <td><img src="docs/screenshots/iphone-6.5-use-first.png" alt="Use-first planning view on a 6.5-inch iPhone simulator" width="260"></td>
+    <td><img src="docs/screenshots/iphone-6.5-thaw-queue.png" alt="Thaw queue on a 6.5-inch iPhone simulator" width="260"></td>
+  </tr>
+</table>
+
 ## MVP
 
 - Android and iOS from one Flutter codebase
@@ -138,9 +148,6 @@ See [PLAN.md](PLAN.md) for architecture and delivery order. Work is tracked in G
   are external operations and are not performed from this repository.
 - Physical-device TalkBack/VoiceOver observations are required before a public
   store release; CI and local widget tests do not replace that evidence.
-- Screenshots are not committed yet because this headless environment cannot
-  generate trustworthy device captures; add platform screenshots only from real
-  simulator/device runs tied to a release candidate build.
 - Linux-host verification cannot execute iOS build tooling directly; iOS release
   compile evidence must come from the macOS CI job.
 
