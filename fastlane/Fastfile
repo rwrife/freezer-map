@@ -91,6 +91,13 @@ platform :ios do
     # the two signing steps are driven directly so the API key reaches them and Xcode
     # can provision against App Store Connect.
     with_xcode_signing_credentials do
+      import_certificate(
+        certificate_path: signing_certificate_file,
+        certificate_password: required_env("IOS_DEVELOPMENT_CERTIFICATE_PASSWORD"),
+        keychain_name: ENV.fetch("MATCH_KEYCHAIN_NAME", "fastlane_tmp_keychain"),
+        keychain_password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "")
+      )
+
       sh("cd \"#{project_root}\" && flutter build ios --release --no-codesign " \
          "--build-name=#{build_name} --build-number=#{build_number}")
 
@@ -190,23 +197,28 @@ def app_store_api_key_pem
   @app_store_api_key_pem = pem
 end
 
-# Writes the .p8 to a private temporary directory for the duration of the block so
-# xcodebuild can authenticate with -authenticationKeyPath, then removes it. The key
-# never lands anywhere tracked; *.p8 is gitignored as a second line of defence.
+# Writes the App Store Connect key and reusable development certificate to a private
+# temporary directory for the duration of the block, then removes them. The API key
+# lets Xcode manage provisioning profiles, while the imported certificate prevents
+# an ephemeral runner from creating and abandoning a new certificate on every build.
 def with_xcode_signing_credentials
   @signing_workdir = Dir.mktmpdir("asc-signing")
   @api_key_file = File.join(@signing_workdir, "AuthKey_#{required_env('ASC_KEY_ID')}.p8")
+  @signing_certificate_file = File.join(@signing_workdir, "ios-development.p12")
   File.write(@api_key_file, app_store_api_key_pem)
+  File.binwrite(@signing_certificate_file, ios_development_certificate_p12)
   File.chmod(0o600, @api_key_file)
+  File.chmod(0o600, @signing_certificate_file)
   yield
 ensure
   FileUtils.rm_rf(@signing_workdir) if @signing_workdir
   @signing_workdir = nil
   @api_key_file = nil
+  @signing_certificate_file = nil
 end
 
-# Credentials for xcodebuild's automatic (cloud) signing. The key id and issuer id
-# are passed as shell references so their values never appear in the logged command.
+# Credentials for xcodebuild's automatic provisioning. The key id and issuer id are
+# passed as shell references so their values never appear in the logged command.
 def xcodebuild_auth_flags
   "-allowProvisioningUpdates " \
     "-authenticationKeyPath \"#{api_key_file}\" " \
@@ -220,6 +232,22 @@ end
 
 def api_key_file
   @api_key_file || UI.user_error!("api_key_file used outside with_xcode_signing_credentials")
+end
+
+def signing_certificate_file
+  @signing_certificate_file ||
+    UI.user_error!("signing_certificate_file used outside with_xcode_signing_credentials")
+end
+
+def ios_development_certificate_p12
+  raw = required_env("IOS_DEVELOPMENT_CERTIFICATE_P12").gsub(/\s+/, "")
+  decoded = Base64.strict_decode64(raw)
+  UI.user_error!("IOS_DEVELOPMENT_CERTIFICATE_P12 decoded to an empty file.") if decoded.empty?
+  decoded
+rescue ArgumentError
+  UI.user_error!(
+    "IOS_DEVELOPMENT_CERTIFICATE_P12 must be base64 encoded from the raw .p12 file."
+  )
 end
 
 # Where `flutter build ipa` would have put the IPA, so the artifact upload and the

@@ -32,9 +32,10 @@ flutter build apk --release
 
 Signed builds are produced by the `iOS Release` workflow
 (`.github/workflows/ios-release.yml`), which runs the fastlane lanes at the
-repository root. No certificate or profile is stored anywhere — Xcode provisions
-them from App Store Connect at build time using an API key, and Apple keeps the
-private key for the resulting cloud-managed certificate.
+repository root. No certificate or profile is stored in the repository. Xcode
+provisions profiles from App Store Connect at build time using an API key. A
+reusable Apple Development certificate is stored as an encrypted GitHub Actions
+secret and imported into Fastlane's temporary keychain for each run.
 
 1. The bundle identifier (`com.infinityball.freezermap`) and `DEVELOPMENT_TEAM`
    live in `ios/Runner.xcodeproj/project.pbxproj`, with
@@ -44,10 +45,25 @@ private key for the resulting cloud-managed certificate.
    conflicts with that.
 2. Three repository secrets authenticate to App Store Connect: `ASC_KEY_ID`,
    `ASC_ISSUER_ID`, and `ASC_KEY_P8` (the `.p8` contents, or their base64). The
-   key must hold the **Admin** role — a Developer-role key can create development
-   certificates but not distribution ones, which surfaces at export as
-   `Cloud signing permission error`.
-3. Run it from the Actions tab, or:
+   key must hold the **Admin** role so Xcode can manage provisioning and cloud
+   distribution signing.
+3. Two repository secrets provide the reusable Apple Development identity:
+   `IOS_DEVELOPMENT_CERTIFICATE_P12` contains the base64-encoded raw `.p12`, and
+   `IOS_DEVELOPMENT_CERTIFICATE_PASSWORD` contains its export password. Create
+   the certificate once on a trusted Mac, export it with its private key from
+   Keychain Access, and set the secrets without committing either value:
+
+```bash
+base64 -i ios-development.p12 | gh secret set IOS_DEVELOPMENT_CERTIFICATE_P12
+gh secret set IOS_DEVELOPMENT_CERTIFICATE_PASSWORD
+```
+
+   Before the first run, revoke obsolete `Apple Development: Created via API`
+   certificates in the Apple Developer portal if the team has reached its
+   certificate limit. Keep the certificate represented by the new `.p12`.
+   Reusing this identity prevents ephemeral runners from consuming another
+   certificate slot on every release.
+4. Run it from the Actions tab, or:
 
 ```bash
 gh workflow run ios-release.yml -f lane=beta      # TestFlight
@@ -56,7 +72,7 @@ gh workflow run ios-release.yml -f lane=release   # TestFlight + submit for revi
 
    Pushing a `v*` tag runs the `beta` lane.
 
-4. Verify a compile without signing (this also runs on every PR):
+5. Verify a compile without signing (this also runs on every PR):
 
 ```bash
 flutter build ios --release --no-codesign
